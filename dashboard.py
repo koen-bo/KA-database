@@ -3,7 +3,7 @@ Climate Adaptation Knowledge Base - Dashboard
 
 A simple Streamlit frontend to:
 - Search and browse documents
-- Edit keywords and feeds
+- Edit zoektermen and feeds
 - Access PDF files
 - Run the ingestion pipeline
 
@@ -24,7 +24,7 @@ import config
 
 # Page config
 st.set_page_config(
-    page_title="Climate Adaptation KB",
+    page_title="Klimaatadaptatie KB",
     page_icon="🌍",
     layout="wide"
 )
@@ -54,14 +54,14 @@ def load_documents(search_query: str = "", limit: int = 100) -> pd.DataFrame:
         for doc in docs:
             data.append({
                 "ID": doc.id,
-                "Title": doc.title[:80] + "..." if doc.title and len(doc.title) > 80 else doc.title,
-                "Source": doc.source_name,
+                "Titel": doc.title[:80] + "..." if doc.title and len(doc.title) > 80 else doc.title,
+                "Bron": doc.source_name,
                 "Type": doc.content_type,
-                "Date": doc.publication_date.strftime("%Y-%m-%d") if doc.publication_date else "",
+                "Datum": doc.publication_date.strftime("%Y-%m-%d") if doc.publication_date else "",
                 "Status": doc.processing_status,
-                "Has PDF": "Yes" if doc.local_file_path else "No",
+                "Heeft PDF": "Ja" if doc.local_file_path else "Nee",
                 "URL": doc.url,
-                "PDF Path": doc.local_file_path or ""
+                "PDF Pad": doc.local_file_path or ""
             })
         
         return pd.DataFrame(data)
@@ -73,7 +73,7 @@ def load_file_content(filepath: str) -> str:
         with open(filepath, "r", encoding="utf-8") as f:
             return f.read()
     except Exception as e:
-        return f"Error loading file: {e}"
+        return f"Fout bij laden bestand: {e}"
 
 
 def save_file_content(filepath: str, content: str) -> bool:
@@ -83,7 +83,7 @@ def save_file_content(filepath: str, content: str) -> bool:
             f.write(content)
         return True
     except Exception as e:
-        st.error(f"Error saving: {e}")
+        st.error(f"Fout bij opslaan: {e}")
         return False
 
 
@@ -110,52 +110,52 @@ def get_document_details(doc_id: int) -> dict:
 
 
 # Sidebar navigation
-st.sidebar.title("Navigation")
+st.sidebar.title("Navigatie")
 page = st.sidebar.radio(
-    "Go to",
-    ["Documents", "Keywords", "RSS Feeds", "Run Pipeline"]
+    "Ga naar",
+    ["Documenten", "Zoektermen", "RSS Feeds", "Pipeline Uitvoeren"]
 )
 
 # Main content
-st.title("Climate Adaptation Knowledge Base")
+st.title("Kennisbank Klimaatadaptatie")
 
-if page == "Documents":
-    st.header("Document Browser")
+if page == "Documenten":
+    st.header("Documentbrowser")
     
     # Search box
     col1, col2 = st.columns([3, 1])
     with col1:
-        search = st.text_input("Search documents", placeholder="Enter keywords...")
+        search = st.text_input("Zoek documenten", placeholder="Voer zoektermen in...")
     with col2:
-        limit = st.selectbox("Show", [25, 50, 100, 200], index=1)
+        limit = st.selectbox("Toon", [25, 50, 100, 200], index=1)
     
     # Load and display documents
     df = load_documents(search, limit)
     
     if df.empty:
-        st.info("No documents found. Run the pipeline to fetch new documents.")
+        st.info("Geen documenten gevonden. Voer de pipeline uit om nieuwe documenten op te halen.")
     else:
-        st.write(f"Showing {len(df)} documents")
+        st.write(f"Toont {len(df)} documenten")
         
         # Display table
         st.dataframe(
-            df[["ID", "Title", "Source", "Type", "Date", "Status", "Has PDF"]],
+            df[["ID", "Titel", "Bron", "Type", "Datum", "Status", "Heeft PDF"]],
             use_container_width=True,
             hide_index=True
         )
         
         # Document details
-        st.subheader("Document Details")
-        doc_id = st.number_input("Enter Document ID to view details", min_value=1, step=1)
+        st.subheader("Documentdetails")
+        doc_id = st.number_input("Voer Document ID in om details te bekijken", min_value=1, step=1)
         
-        if st.button("View Document"):
+        if st.button("Bekijk Document"):
             doc = get_document_details(doc_id)
             if doc:
-                st.write(f"**Title:** {doc['title']}")
-                st.write(f"**Source:** {doc['source_name']}")
+                st.write(f"**Titel:** {doc['title']}")
+                st.write(f"**Bron:** {doc['source_name']}")
                 st.write(f"**URL:** [{doc['url']}]({doc['url']})")
                 st.write(f"**Type:** {doc['content_type']}")
-                st.write(f"**Fetched:** {doc['fetched_at']}")
+                st.write(f"**Opgehaald:** {doc['fetched_at']}")
                 
                 if doc['local_file_path']:
                     st.write(f"**PDF:** `{doc['local_file_path']}`")
@@ -169,11 +169,11 @@ if page == "Documents":
                             )
                 else:
                     # No PDF - offer to refetch
-                    st.warning("No PDF attached to this document")
-                    if st.button("🔍 Try to Find PDF", key=f"refetch_{doc_id}"):
-                        with st.spinner("Searching for PDF on page..."):
+                    st.warning("Geen PDF gekoppeld aan dit document")
+                    if st.button("🔍 Probeer PDF te vinden", key=f"refetch_{doc_id}"):
+                        with st.spinner("Zoeken naar PDF op pagina..."):
                             fetcher = ContentFetcher()
-                            result = fetcher.fetch(doc['url'], doc['source_name'] or "Unknown", doc['title'] or "")
+                            result = fetcher.fetch(doc['url'], doc['source_name'] or "Onbekend", doc['title'] or "")
                             
                             if result and result["file_path"]:
                                 # Update database
@@ -185,102 +185,102 @@ if page == "Documents":
                                         db_doc.full_text = result["text"]
                                         session.commit()
                                 
-                                st.success(f"PDF found and saved: {result['file_path']}")
+                                st.success(f"PDF gevonden en opgeslagen: {result['file_path']}")
                                 st.rerun()
                             else:
-                                st.info("No PDF download link found on this page")
+                                st.info("Geen PDF downloadlink gevonden op deze pagina")
                 
-                with st.expander("Full Text Preview"):
-                    st.text(doc['full_text'][:5000] if doc['full_text'] else "No text available")
+                with st.expander("Volledige Tekst Voorvertoning"):
+                    st.text(doc['full_text'][:5000] if doc['full_text'] else "Geen tekst beschikbaar")
             else:
-                st.error(f"Document {doc_id} not found")
+                st.error(f"Document {doc_id} niet gevonden")
 
-elif page == "Keywords":
-    st.header("Keyword Configuration")
+elif page == "Zoektermen":
+    st.header("Zoekterm Configuratie")
     
-    tab1, tab2, tab3 = st.tabs(["Tier 1 Keywords", "Tier 2 Keywords", "Context Words"])
+    tab1, tab2, tab3 = st.tabs(["Tier 1 Zoektermen", "Tier 2 Zoektermen", "Contextwoorden"])
     
     with tab1:
-        st.write("**Tier 1: Direct Hit Keywords** - Documents with these are always downloaded")
+        st.write("**Tier 1: Directe Treffer Zoektermen** - Documenten met deze worden altijd gedownload")
         tier1_path = os.path.join(config.BASE_DIR, "tier1_keywords.txt")
         tier1_content = load_file_content(tier1_path)
         
         new_tier1 = st.text_area(
-            "Edit Tier 1 Keywords (one per line, # for comments)",
+            "Bewerk Tier 1 Zoektermen (één per regel, # voor opmerkingen)",
             tier1_content,
             height=400
         )
         
-        if st.button("Save Tier 1 Keywords"):
+        if st.button("Sla Tier 1 Zoektermen op"):
             if save_file_content(tier1_path, new_tier1):
-                st.success("Tier 1 keywords saved!")
+                st.success("Tier 1 zoektermen opgeslagen!")
     
     with tab2:
-        st.write("**Tier 2: Context-Dependent Keywords** - Only downloaded with context words")
+        st.write("**Tier 2: Contextafhankelijke Zoektermen** - Alleen gedownload met contextwoorden")
         tier2_path = os.path.join(config.BASE_DIR, "tier2_keywords.txt")
         tier2_content = load_file_content(tier2_path)
         
         new_tier2 = st.text_area(
-            "Edit Tier 2 Keywords ([Theme] headers, one keyword per line)",
+            "Bewerk Tier 2 Zoektermen ([Thema] koppen, één zoekterm per regel)",
             tier2_content,
             height=400
         )
         
-        if st.button("Save Tier 2 Keywords"):
+        if st.button("Sla Tier 2 Zoektermen op"):
             if save_file_content(tier2_path, new_tier2):
-                st.success("Tier 2 keywords saved!")
+                st.success("Tier 2 zoektermen opgeslagen!")
     
     with tab3:
-        st.write("**Context Words** - Make Tier 2 keywords relevant")
+        st.write("**Contextwoorden** - Maak Tier 2 zoektermen relevant")
         context_path = os.path.join(config.BASE_DIR, "context_words.txt")
         context_content = load_file_content(context_path)
         
         new_context = st.text_area(
-            "Edit Context Words (one per line)",
+            "Bewerk Contextwoorden (één per regel)",
             context_content,
             height=300
         )
         
-        if st.button("Save Context Words"):
+        if st.button("Sla Contextwoorden op"):
             if save_file_content(context_path, new_context):
-                st.success("Context words saved!")
+                st.success("Contextwoorden opgeslagen!")
 
 elif page == "RSS Feeds":
-    st.header("RSS Feed Configuration")
+    st.header("RSS Feed Configuratie")
     
     feeds_path = os.path.join(config.BASE_DIR, "feeds.txt")
     feeds_content = load_file_content(feeds_path)
     
     # Show current stats
     feeds = config.load_feeds()
-    st.info(f"Currently configured: **{len(feeds)} feeds**")
+    st.info(f"Momenteel geconfigureerd: **{len(feeds)} feeds**")
     
     # Feed editor
     new_feeds = st.text_area(
-        "Edit RSS Feeds (format: URL | Source Name)",
+        "Bewerk RSS Feeds (formaat: URL | Bronnaam)",
         feeds_content,
         height=500
     )
     
-    if st.button("Save Feeds"):
+    if st.button("Sla Feeds op"):
         if save_file_content(feeds_path, new_feeds):
-            st.success("Feeds saved! Changes will apply on next pipeline run.")
+            st.success("Feeds opgeslagen! Wijzigingen worden toegepast bij volgende pipeline run.")
     
     # Show feed list
-    with st.expander("View Current Feeds"):
+    with st.expander("Bekijk Huidige Feeds"):
         for feed in feeds:
             st.write(f"- **{feed['source_name']}**: `{feed['url'][:60]}...`")
 
-elif page == "Run Pipeline":
-    st.header("Run Ingestion Pipeline")
+elif page == "Pipeline Uitvoeren":
+    st.header("Voer Ingestie Pipeline uit")
     
     st.write("""
-    Click the button below to run the ingestion pipeline manually.
-    This will:
-    1. Fetch all configured RSS feeds
-    2. Filter by keywords
-    3. Download relevant documents
-    4. Store in database
+    Klik op de knop hieronder om de ingestie pipeline handmatig uit te voeren.
+    Dit zal:
+    1. Alle geconfigureerde RSS feeds ophalen
+    2. Filteren op zoektermen
+    3. Relevante documenten downloaden
+    4. Opslaan in database
     """)
     
     # Stats
@@ -291,18 +291,18 @@ elif page == "Run Pipeline":
         docs_without_pdf = total_docs - docs_with_pdf
     
     col1, col2, col3, col4 = st.columns(4)
-    col1.metric("Total Documents", total_docs)
-    col2.metric("New (Unprocessed)", new_docs)
-    col3.metric("With PDF", docs_with_pdf)
-    col4.metric("No PDF", docs_without_pdf)
+    col1.metric("Totaal Documenten", total_docs)
+    col2.metric("Nieuw (Onverwerkt)", new_docs)
+    col3.metric("Met PDF", docs_with_pdf)
+    col4.metric("Geen PDF", docs_without_pdf)
     
-    st.subheader("Actions")
+    st.subheader("Acties")
     
     col_a, col_b = st.columns(2)
     
     with col_a:
-        if st.button("Run Pipeline Now", type="primary"):
-            with st.spinner("Running pipeline..."):
+        if st.button("Voer Pipeline Nu Uit", type="primary"):
+            with st.spinner("Pipeline uitvoeren..."):
                 result = subprocess.run(
                     ["python", "main.py"],
                     capture_output=True,
@@ -311,15 +311,15 @@ elif page == "Run Pipeline":
                 )
                 
                 if result.returncode == 0:
-                    st.success("Pipeline completed successfully!")
+                    st.success("Pipeline succesvol voltooid!")
                     st.code(result.stdout)
                 else:
-                    st.error("Pipeline failed!")
+                    st.error("Pipeline mislukt!")
                     st.code(result.stderr)
     
     with col_b:
-        if st.button("Refetch Missing PDFs"):
-            with st.spinner("Searching for PDFs in existing documents..."):
+        if st.button("Herhaal Ontbrekende PDF's"):
+            with st.spinner("Zoeken naar PDF's in bestaande documenten..."):
                 result = subprocess.run(
                     ["python", "refetch_pdfs.py"],
                     capture_output=True,
@@ -328,13 +328,13 @@ elif page == "Run Pipeline":
                 )
                 
                 if result.returncode == 0:
-                    st.success("PDF refetch completed!")
+                    st.success("PDF herhaling voltooid!")
                     st.code(result.stdout)
                 else:
-                    st.error("PDF refetch failed!")
+                    st.error("PDF herhaling mislukt!")
                     st.code(result.stderr)
 
 # Footer
 st.sidebar.markdown("---")
-st.sidebar.markdown("**Climate Adaptation KB**")
+st.sidebar.markdown("**Klimaatadaptatie KB**")
 st.sidebar.markdown(f"Database: `{config.DATABASE_PATH}`")
