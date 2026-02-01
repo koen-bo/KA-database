@@ -1,0 +1,44 @@
+# Tier 1 Keywords - Direct Hit (Altijd relevant)
+# -----------------------------------------------
+# Deze termen zijn zo specifiek voor klimaatadaptatie dat ze
+# bijna geen 'false positives' opleveren.
+# Als een document deze woorden bevat -> Altijd downloaden.
+
+# Klimaatadaptatie algemeen
+klimaatadaptatie
+klimaatbestendig
+klimaatrobuust
+klimaatrisico
+klimaatschade
+adaptatiestrategie
+ruimtelijke adaptatie
+
+# Nationaal beleid
+deltaprogramma
+deltabeslissing
+nationale adaptatiestrategie
+nas 2026
+nup ka
+water en bodem sturend
+waterbodemsturend
+
+# Methodiek
+meerlaagsveiligheid
+adaptatiepaden
+klimaatstresstest
+klimaatlabel
+
+# Hitte
+hittestress
+hitte-eiland
+
+# Water & veiligheid
+waterveiligheid
+overstromingsrisico
+basisbeschermingsniveau
+droogteproblematiek
+verzilting
+klimaatbuffer
+
+# Nature-based solutions
+nature based solutions

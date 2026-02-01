@@ -1,0 +1,63 @@
+# Tier 2 Keywords - Context Dependent
+# ------------------------------------
+# These keywords are only relevant when combined with context words
+# (from context_words.txt) or when multiple themes match together.
+#
+# Format: Lines starting with [ThemeName] define a new theme.
+# Keywords under each theme are grouped for reporting purposes.
+
+[Water]
+piekbui
+extreme neerslag
+hoosbui
+wateroverlast
+hoogwater
+laagwater
+zoetwaterbeschikbaarheid
+drinkwatertekort
+dijkversterking
+uiterwaarden
+beekdalen
+rioolcapaciteit
+waterberging
+afkoppelen
+
+[Landbouw_Natuur]
+bodemdaling
+verdroging
+verzilting
+oogstschade
+natuurbrand
+veenweide
+spons
+vasthouden van water
+peilbeheer
+gewasopbrengst
+brede weersverzekering
+
+[Wonen_Werken_Infra]
+funderingsschade
+paalrot
+vitale infrastructuur
+uitval
+cascade-effect
+bedrijventerreinen
+werklandschappen
+binnenvaart
+bevaarbaarheid
+koelte
+zonwering
+groene daken
+onttegelen
+groenblauwe dooradering
+
+[Gezondheid_Maatschappij]
+vector-overdraagbare
+hooikoorts
+pollen
+hitteplan
+tropische nachten
+klimaatrechtvaardigheid
+kwetsbare groepen
+sociale infrastructuur
+autonome adaptatie

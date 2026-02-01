@@ -1,0 +1,32 @@
+# Environment and secrets
+.env
+.env.local
+*.env
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+ENV/
+.venv/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# NOTE: We intentionally DO NOT ignore these files
+# because they need to be committed for GitHub Actions:
+# - kennisbank.db (the database)
+# - pdfs/ (downloaded PDF files)

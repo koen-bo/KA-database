@@ -1,0 +1,7 @@
+sqlalchemy>=2.0
+requests
+beautifulsoup4
+pypdf
+python-dotenv
+feedparser
+google-generativeai

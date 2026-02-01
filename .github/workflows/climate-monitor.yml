@@ -1,0 +1,56 @@
+name: Climate Monitor - Daily Ingestion
+
+on:
+  # Run daily at 8:00 AM UTC
+  schedule:
+    - cron: '0 8 * * *'
+  
+  # Allow manual trigger from GitHub Actions tab
+  workflow_dispatch:
+
+jobs:
+  ingest:
+    runs-on: ubuntu-latest
+    
+    # Grant write permissions to commit changes back
+    permissions:
+      contents: write
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          # Fetch full history for proper git operations
+          fetch-depth: 0
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+      
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      
+      - name: Run ingestion pipeline
+        env:
+          # For Phase 2: Gemini API key from secrets
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: python main.py
+      
+      - name: Commit and push changes
+        run: |
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          
+          # Add database and PDFs
+          git add kennisbank.db pdfs/ || true
+          
+          # Check if there are changes to commit
+          if git diff --staged --quiet; then
+            echo "No new documents found - nothing to commit"
+          else
+            git commit -m "🔄 Auto-update: $(date +'%Y-%m-%d %H:%M') UTC"
+            git push
+            echo "✅ Changes committed and pushed"
+          fi

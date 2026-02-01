@@ -1,0 +1,31 @@
+# Context Words
+# -------------
+# Tier 2 keywords are only relevant when combined with these context words.
+# This prevents downloading generic documents about "wateroverlast" or
+# "landbouw" that aren't related to climate adaptation.
+
+# Adaptation terms
+aanpassing
+aanpassen
+adaptatie
+adapteren
+
+# Resilience
+weerbaar
+weerbaarheid
+
+# Extremes
+extreem
+extreme
+
+# Risk
+risico
+risico's
+
+# Climate
+klimaat
+klimaatverandering
+
+# Future-proofing
+toekomst
+toekomstbestendig

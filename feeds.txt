@@ -1,0 +1,35 @@
+# RSS Feeds for Climate Adaptation Knowledge Base
+# -----------------------------------------------
+# Format: URL | Source Name
+
+# --- CORE: Officiele Publicaties (Tweede Kamer, Staatscourant, Wetgeving) ---
+# Deze feed zoekt specifiek op jouw thema's in de officiele database.
+https://zoek.officielebekendmakingen.nl/zoeken/resultaat/?q=(c.q+klimaatadaptatie+OF+hittestress+OF+wateroverlast+OF+droogte+OF+bodemdaling+OF+klimaatbestendig)&sort=datum-aflopend&output=rss | Overheid.nl (Custom Search)
+
+# --- CORE: Beleid & Politiek ---
+https://www.tweedekamer.nl/rss/nieuws | Tweede Kamer Nieuws
+https://www.rijksoverheid.nl/rss/onderwerpen/klimaatverandering | Rijksoverheid - Klimaat
+https://www.rijksoverheid.nl/rss/onderwerpen/water | Rijksoverheid - Water
+https://www.rijksoverheid.nl/rss/onderwerpen/natuur-en-biodiversiteit | Rijksoverheid - Natuur (LVVN)
+
+# --- CORE: Kennis & Uitvoering (Cruciaal voor NAS/DPRA) ---
+https://klimaatadaptatienederland.nl/actueel/nieuws/rss | Kennisportaal Klimaatadaptatie
+https://www.deltaprogramma.nl/rss | Deltaprogramma
+https://www.h2owaternetwerk.nl/rss | H2O Waternetwerk (Waterschappen)
+https://www.stowa.nl/rss | STOWA (Kenniscentrum Water)
+
+# --- THEMA: Ruimte & Leefomgeving (PBL, Rli) ---
+https://www.pbl.nl/rss.xml | Planbureau voor de Leefomgeving (PBL)
+https://www.rli.nl/rss.xml | Raad voor de Leefomgeving (Rli)
+https://www.ruimtelijkeadaptatie.nl/rss | Ruimtelijke Adaptatie
+
+# --- THEMA: Gezondheid & Veiligheid (Hitte, Crisis) ---
+https://www.rivm.nl/rss | RIVM (Gezondheid & Milieu)
+https://nipv.nl/feed/ | NIPV (Publieke Veiligheid / Natuurbranden)
+
+# --- THEMA: Natuur & Landbouw ---
+https://www.naturetoday.com/nl/nl/feed/nature-today | Nature Today (Biodiversiteit)
+https://www.agriholland.nl/nieuws/rss_nieuws.xml | AgriHolland (Landbouw)
+
+# --- INTERNATIONAAL: EU Context ---
+https://www.europa-nu.nl/id/vhsjU2/nieuws/rss | Europa Nu (EU Beleid)
