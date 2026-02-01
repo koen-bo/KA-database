@@ -68,7 +68,8 @@ class ContentFetcher:
             if self._is_pdf(url, content_type):
                 return self._process_pdf(response.content, url, source_name, title)
             else:
-                return self._process_html(response.text)
+                # Process HTML, but also check for embedded PDF links
+                return self._process_html_with_pdf_check(response.text, url, source_name, title)
                 
         except requests.exceptions.Timeout:
             print(f"[Fetcher] Timeout fetching {url}")
@@ -145,6 +146,166 @@ class ContentFetcher:
             
         except Exception as e:
             print(f"[Fetcher] Error processing PDF: {e}")
+            return None
+    
+    def _process_html_with_pdf_check(
+        self, 
+        html_content: str, 
+        url: str, 
+        source_name: str, 
+        title: str
+    ) -> Optional[FetchResult]:
+        """
+        Process HTML content, checking for embedded PDF download links.
+        
+        For government document pages (rijksoverheid.nl, etc.), the actual PDF
+        is often linked via open.overheid.nl. This method extracts that PDF.
+        
+        Args:
+            html_content: Raw HTML string
+            url: Original page URL
+            source_name: Source name for PDF filename
+            title: Document title for PDF filename
+        
+        Returns:
+            FetchResult with extracted text and optional PDF file_path
+        """
+        try:
+            soup = BeautifulSoup(html_content, "html.parser")
+            
+            # Check for PDF download links (common on government document pages)
+            pdf_url = self._find_pdf_download_link(soup, url)
+            
+            if pdf_url:
+                # Try to download the PDF
+                pdf_result = self._download_pdf_from_url(pdf_url, source_name, title)
+                if pdf_result:
+                    return pdf_result
+            
+            # Fall back to regular HTML processing
+            return self._process_html(html_content)
+            
+        except Exception as e:
+            print(f"[Fetcher] Error processing HTML with PDF check: {e}")
+            return self._process_html(html_content)
+    
+    def _find_pdf_download_link(self, soup: BeautifulSoup, page_url: str) -> Optional[str]:
+        """
+        Find PDF download links in HTML page.
+        
+        Uses multiple detection strategies:
+        1. Direct .pdf links in href
+        2. open.overheid.nl document links
+        3. Links with "download" in text and PDF-related content
+        4. Links with "(pdf" in the link text
+        
+        Args:
+            soup: BeautifulSoup parsed HTML
+            page_url: Original page URL for context
+        
+        Returns:
+            PDF URL if found, None otherwise
+        """
+        parsed_page = urlparse(page_url)
+        base_url = f"{parsed_page.scheme}://{parsed_page.netloc}"
+        
+        # Collect all potential PDF links with priority scores
+        pdf_candidates = []
+        
+        for link in soup.find_all("a", href=True):
+            href = link.get("href", "").strip()
+            text = link.get_text(strip=True).lower()
+            
+            if not href:
+                continue
+            
+            score = 0
+            
+            # Check href patterns
+            href_lower = href.lower()
+            
+            # Direct .pdf extension (highest priority)
+            if href_lower.endswith(".pdf"):
+                score += 100
+            
+            # open.overheid.nl document links
+            if "open.overheid.nl" in href_lower and "/file" in href_lower:
+                score += 90
+            
+            # officielebekendmakingen.nl
+            if "officielebekendmakingen.nl" in href_lower:
+                score += 80
+            
+            # .pdf anywhere in URL
+            if ".pdf" in href_lower:
+                score += 70
+            
+            # Check link text patterns
+            if "download" in text and ("pdf" in text or "rapport" in text or "advies" in text):
+                score += 50
+            
+            if "(pdf" in text:
+                score += 40
+            
+            if "volledige" in text and ("advies" in text or "rapport" in text):
+                score += 30
+            
+            # Skip if no relevant patterns found
+            if score == 0:
+                continue
+            
+            # Make absolute URL
+            if href.startswith("/"):
+                href = base_url + href
+            elif not href.startswith("http"):
+                # Relative path
+                continue
+            
+            pdf_candidates.append((score, href, text[:50]))
+        
+        # Sort by score (highest first) and return best match
+        if pdf_candidates:
+            pdf_candidates.sort(key=lambda x: x[0], reverse=True)
+            best_match = pdf_candidates[0]
+            print(f"[Fetcher] Found PDF link (score {best_match[0]}): {best_match[2]}")
+            return best_match[1]
+        
+        return None
+    
+    def _download_pdf_from_url(
+        self, 
+        pdf_url: str, 
+        source_name: str, 
+        title: str
+    ) -> Optional[FetchResult]:
+        """
+        Download a PDF from a URL and process it.
+        
+        Args:
+            pdf_url: URL to the PDF file
+            source_name: Source name for filename
+            title: Document title for filename
+        
+        Returns:
+            FetchResult with PDF text and file_path, or None on error
+        """
+        try:
+            print(f"[Fetcher] Downloading PDF: {pdf_url[:60]}...")
+            headers = {"User-Agent": self.user_agent}
+            response = requests.get(pdf_url, headers=headers, timeout=self.timeout, allow_redirects=True)
+            response.raise_for_status()
+            
+            content_type = response.headers.get("Content-Type", "").lower()
+            
+            # Verify it's actually a PDF
+            if "application/pdf" in content_type or response.content[:4] == b"%PDF":
+                return self._process_pdf(response.content, pdf_url, source_name, title)
+            else:
+                print(f"[Fetcher] URL did not return PDF: {content_type}")
+                return None
+                
+        except Exception as e:
+            print(f"[Fetcher] Error downloading PDF: {e}")
             return None
     
     def _process_html(self, html_content: str) -> Optional[FetchResult]:

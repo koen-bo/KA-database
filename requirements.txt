@@ -5,3 +5,5 @@ pypdf
 python-dotenv
 feedparser
 google-generativeai
+streamlit
+pandas

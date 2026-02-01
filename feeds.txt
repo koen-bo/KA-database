@@ -2,34 +2,72 @@
 # -----------------------------------------------
 # Format: URL | Source Name
 
-# --- CORE: Officiele Publicaties (Tweede Kamer, Staatscourant, Wetgeving) ---
-# Deze feed zoekt specifiek op jouw thema's in de officiele database.
-https://zoek.officielebekendmakingen.nl/zoeken/resultaat/?q=(c.q+klimaatadaptatie+OF+hittestress+OF+wateroverlast+OF+droogte+OF+bodemdaling+OF+klimaatbestendig)&sort=datum-aflopend&output=rss | Overheid.nl (Custom Search)
+# =============================================================================
+# RIJKSOVERHEID (feeds.rijksoverheid.nl)
+# =============================================================================
+# Nieuws per onderwerp
+https://feeds.rijksoverheid.nl/onderwerpen/klimaatverandering/nieuws.rss | Rijksoverheid - Klimaat Nieuws
+https://feeds.rijksoverheid.nl/onderwerpen/water/nieuws.rss | Rijksoverheid - Water Nieuws
+https://feeds.rijksoverheid.nl/onderwerpen/natuur-en-biodiversiteit/nieuws.rss | Rijksoverheid - Natuur Nieuws
 
-# --- CORE: Beleid & Politiek ---
-https://www.tweedekamer.nl/rss/nieuws | Tweede Kamer Nieuws
-https://www.rijksoverheid.nl/rss/onderwerpen/klimaatverandering | Rijksoverheid - Klimaat
-https://www.rijksoverheid.nl/rss/onderwerpen/water | Rijksoverheid - Water
-https://www.rijksoverheid.nl/rss/onderwerpen/natuur-en-biodiversiteit | Rijksoverheid - Natuur (LVVN)
+# Documenten per onderwerp (Kamerstukken, rapporten, etc.)
+https://feeds.rijksoverheid.nl/onderwerpen/klimaatverandering/documenten.rss | Rijksoverheid - Klimaat Documenten
+https://feeds.rijksoverheid.nl/onderwerpen/water/documenten.rss | Rijksoverheid - Water Documenten
 
-# --- CORE: Kennis & Uitvoering (Cruciaal voor NAS/DPRA) ---
-https://klimaatadaptatienederland.nl/actueel/nieuws/rss | Kennisportaal Klimaatadaptatie
-https://www.deltaprogramma.nl/rss | Deltaprogramma
-https://www.h2owaternetwerk.nl/rss | H2O Waternetwerk (Waterschappen)
-https://www.stowa.nl/rss | STOWA (Kenniscentrum Water)
+# Alle Kamerstukken
+https://feeds.rijksoverheid.nl/kamerstukken.rss | Rijksoverheid - Kamerstukken
 
-# --- THEMA: Ruimte & Leefomgeving (PBL, Rli) ---
-https://www.pbl.nl/rss.xml | Planbureau voor de Leefomgeving (PBL)
+# Ministeries (nieuws en kamerstukken)
+https://feeds.rijksoverheid.nl/ministeries/ministerie-van-infrastructuur-en-waterstaat/nieuws.rss | Min. IenW - Nieuws (incl. RWS)
+https://feeds.rijksoverheid.nl/ministeries/ministerie-van-infrastructuur-en-waterstaat/kamerstukken.rss | Min. IenW - Kamerstukken
+https://feeds.rijksoverheid.nl/ministeries/ministerie-van-landbouw-visserij-voedselzekerheid-en-natuur/nieuws.rss | Min. LNV - Nieuws
+https://feeds.rijksoverheid.nl/ministeries/ministerie-van-volkshuisvesting-en-ruimtelijke-ordening/nieuws.rss | Min. VRO - Nieuws
+
+# =============================================================================
+# TWEEDE KAMER
+# =============================================================================
+https://www.tweedekamer.nl/rss.xml | Tweede Kamer
+
+# =============================================================================
+# PBL - PLANBUREAU VOOR DE LEEFOMGEVING (pbl.nl/feed)
+# =============================================================================
+# Nieuws per thema
+https://www.pbl.nl/feed/topic/13/article/rss.xml | PBL - Klimaat en Energie
+https://www.pbl.nl/feed/topic/6/article/rss.xml | PBL - Water
+https://www.pbl.nl/feed/topic/11/article/rss.xml | PBL - Natuur en Biodiversiteit
+
+# Publicaties per thema
+https://www.pbl.nl/feed/topic/13/publication/rss.xml | PBL - Klimaat Publicaties
+https://www.pbl.nl/feed/topic/6/publication/rss.xml | PBL - Water Publicaties
+
+# =============================================================================
+# ADVIESRADEN & ONDERZOEK
+# =============================================================================
 https://www.rli.nl/rss.xml | Raad voor de Leefomgeving (Rli)
-https://www.ruimtelijkeadaptatie.nl/rss | Ruimtelijke Adaptatie
+https://www.rivm.nl/nieuws/rss.xml | RIVM (Gezondheid & Milieu)
+https://www.kwrwater.nl/feed/ | KWR Water Research
 
-# --- THEMA: Gezondheid & Veiligheid (Hitte, Crisis) ---
-https://www.rivm.nl/rss | RIVM (Gezondheid & Milieu)
+# =============================================================================
+# VEILIGHEID & CRISISBEHEERSING
+# =============================================================================
 https://nipv.nl/feed/ | NIPV (Publieke Veiligheid / Natuurbranden)
 
-# --- THEMA: Natuur & Landbouw ---
-https://www.naturetoday.com/nl/nl/feed/nature-today | Nature Today (Biodiversiteit)
-https://www.agriholland.nl/nieuws/rss_nieuws.xml | AgriHolland (Landbouw)
+# =============================================================================
+# WATER & WATERSCHAPPEN
+# =============================================================================
+https://unievanwaterschappen.nl/feed/ | Unie van Waterschappen
+https://www.waterforum.net/feed/ | Waterforum (Water nieuws)
 
-# --- INTERNATIONAAL: EU Context ---
-https://www.europa-nu.nl/id/vhsjU2/nieuws/rss | Europa Nu (EU Beleid)
+# =============================================================================
+# NATUUR & BIODIVERSITEIT
+# =============================================================================
+https://www.naturetoday.com/intl/nl/observations/rss | Nature Today (Biodiversiteit)
+https://www.natuurmonumenten.nl/rss.xml | Natuurmonumenten
+https://www.greenpeace.org/nl/feed/ | Greenpeace Nederland
+
+# =============================================================================
+# NIET BESCHIKBAAR (geen directe RSS feeds)
+# =============================================================================
+# Deltaprogramma - geen actieve RSS, gebruik Min. IenW feeds
+# Rijkswaterstaat - geen actieve RSS, gebruik Min. IenW feeds
+# Klimaatadaptatienederland.nl - feed geeft HTML terug
