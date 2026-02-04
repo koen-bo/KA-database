@@ -161,11 +161,14 @@ class ContentFetcher:
         For government document pages (rijksoverheid.nl, etc.), the actual PDF
         is often linked via open.overheid.nl. This method extracts that PDF.
         
+        Uses smart detection to avoid downloading supplementary PDFs from
+        sidebars or "related publications" sections.
+        
         Args:
             html_content: Raw HTML string
             url: Original page URL
             source_name: Source name for PDF filename
-            title: Document title for PDF filename
+            title: Document title for PDF filename (used for matching)
         
         Returns:
             FetchResult with extracted text and optional PDF file_path
@@ -174,7 +177,8 @@ class ContentFetcher:
             soup = BeautifulSoup(html_content, "html.parser")
             
             # Check for PDF download links (common on government document pages)
-            pdf_url = self._find_pdf_download_link(soup, url)
+            # Pass article title for smart matching
+            pdf_url = self._find_pdf_download_link(soup, url, article_title=title)
             
             if pdf_url:
                 # Try to download the PDF
@@ -189,23 +193,27 @@ class ContentFetcher:
             print(f"[Fetcher] Error processing HTML with PDF check: {e}")
             return self._process_html(html_content)
     
-    def _find_pdf_download_link(self, soup: BeautifulSoup, page_url: str) -> Optional[str]:
+    def _find_pdf_download_link(self, soup: BeautifulSoup, page_url: str, article_title: str = "") -> Optional[str]:
         """
-        Find PDF download links in HTML page.
+        Find PDF download links in HTML page with smart context detection.
         
-        Uses multiple detection strategies:
-        1. Direct .pdf links in href
-        2. open.overheid.nl document links
+        Uses multiple detection strategies with context-aware penalties:
+        1. Direct .pdf links in href (boosted)
+        2. open.overheid.nl document links (boosted)
         3. Links with "download" in text and PDF-related content
-        4. Links with "(pdf" in the link text
+        4. PENALTIES for PDFs in sidebars, footers, "related" sections
+        5. Title matching: boost if PDF filename matches article title
         
         Args:
             soup: BeautifulSoup parsed HTML
             page_url: Original page URL for context
+            article_title: Article title for matching against PDF filename
         
         Returns:
-            PDF URL if found, None otherwise
+            PDF URL if found and score >= threshold, None otherwise
         """
+        MIN_SCORE_THRESHOLD = 120  # Minimum score to accept a PDF (high to avoid supplementary docs)
+        
         parsed_page = urlparse(page_url)
         base_url = f"{parsed_page.scheme}://{parsed_page.netloc}"
         
@@ -220,6 +228,7 @@ class ContentFetcher:
                 continue
             
             score = 0
+            penalties = []
             
             # Check href patterns
             href_lower = href.lower()
@@ -240,6 +249,17 @@ class ContentFetcher:
             if ".pdf" in href_lower:
                 score += 70
             
+            # =================================================================
+            # PAGE CONTEXT BOOST - Document pages should fetch PDFs
+            # =================================================================
+            page_url_lower = page_url.lower()
+            # Rijksoverheid document pages (kamerstukken, rapporten, etc.)
+            if any(doc_type in page_url_lower for doc_type in 
+                   ["/kamerstukken/", "/rapporten/", "/publicaties/", "/documenten/", 
+                    "/beleidsnotas/", "/brieven/", "/besluiten/"]):
+                score += 50
+                penalties.append("doc_page_boost:+50")
+            
             # Check link text patterns
             if "download" in text and ("pdf" in text or "rapport" in text or "advies" in text):
                 score += 50
@@ -254,6 +274,49 @@ class ContentFetcher:
             if score == 0:
                 continue
             
+            # =================================================================
+            # CONTEXT PENALTIES - Check if link is in supplementary sections
+            # =================================================================
+            context_penalty = self._get_link_context_penalty(link)
+            if context_penalty > 0:
+                penalties.append(f"context:-{context_penalty}")
+            score -= context_penalty
+            
+            # Check link text for supplementary indicators
+            supplementary_texts = ["gerelateerd", "meer lezen", "achtergrond", "bijlage", 
+                                   "zie ook", "lees ook", "related", "background",
+                                   "publicatie", "bron:", "bron "]
+            for supp_text in supplementary_texts:
+                if supp_text in text:
+                    score -= 40
+                    penalties.append(f"text:{supp_text}:-40")
+                    break
+            
+            # Extra penalty if link text mentions a different topic/report name
+            # (e.g., "PBL-rapport" when article is about "Wetgevingsoverleg")
+            if "rapport" in text or "advies" in text or "publicatie" in text:
+                # This might be a reference to another document
+                score -= 20
+                penalties.append("ref_to_other_doc:-20")
+            
+            # =================================================================
+            # TITLE MATCHING - Boost if PDF filename OR link text matches article title
+            # =================================================================
+            if article_title:
+                # Check both URL and link text for title match
+                url_match = self._get_title_match_score(article_title, href)
+                text_match = self._get_title_match_score(article_title, text) if text else 0
+                
+                # Use the better of the two scores
+                title_match_score = max(url_match, text_match)
+                
+                if title_match_score != 0:
+                    if title_match_score > 0:
+                        penalties.append(f"title_match:+{title_match_score}")
+                    else:
+                        penalties.append(f"title_mismatch:{title_match_score}")
+                score += title_match_score
+            
             # Make absolute URL
             if href.startswith("/"):
                 href = base_url + href
@@ -261,16 +324,123 @@ class ContentFetcher:
                 # Relative path
                 continue
             
-            pdf_candidates.append((score, href, text[:50]))
+            penalty_str = ", ".join(penalties) if penalties else "none"
+            pdf_candidates.append((score, href, text[:50], penalty_str))
         
-        # Sort by score (highest first) and return best match
+        # Sort by score (highest first)
         if pdf_candidates:
             pdf_candidates.sort(key=lambda x: x[0], reverse=True)
             best_match = pdf_candidates[0]
-            print(f"[Fetcher] Found PDF link (score {best_match[0]}): {best_match[2]}")
-            return best_match[1]
+            
+            # Check minimum threshold
+            if best_match[0] >= MIN_SCORE_THRESHOLD:
+                print(f"[Fetcher] Found PDF link (score {best_match[0]}, adjustments: {best_match[3]}): {best_match[2]}")
+                return best_match[1]
+            else:
+                print(f"[Fetcher] PDF rejected (score {best_match[0]} < {MIN_SCORE_THRESHOLD}, adjustments: {best_match[3]}): {best_match[2]}")
+                return None
         
         return None
+    
+    def _get_link_context_penalty(self, link) -> int:
+        """
+        Calculate penalty based on where the link appears on the page.
+        
+        Links in sidebars, footers, and "related content" sections are
+        likely supplementary material, not the main document.
+        
+        Args:
+            link: BeautifulSoup link element
+        
+        Returns:
+            Penalty score (0 = no penalty, higher = more suspicious)
+        """
+        penalty = 0
+        
+        # Check parent elements for context clues
+        for parent in link.parents:
+            if parent.name is None:
+                continue
+            
+            # Check tag names
+            if parent.name in ["aside", "footer", "nav"]:
+                penalty += 50
+                break
+            
+            # Check class names
+            parent_classes = " ".join(parent.get("class", [])).lower()
+            
+            suspicious_classes = [
+                "related", "sidebar", "footer", "widget", "aside",
+                "publicaties", "gerelateerd", "more", "extra", 
+                "recommended", "also", "links", "nav"
+            ]
+            
+            for susp in suspicious_classes:
+                if susp in parent_classes:
+                    penalty += 40
+                    break
+            
+            # Check id
+            parent_id = (parent.get("id") or "").lower()
+            for susp in suspicious_classes:
+                if susp in parent_id:
+                    penalty += 40
+                    break
+            
+            if penalty > 0:
+                break
+        
+        return min(penalty, 60)  # Cap penalty at 60
+    
+    def _get_title_match_score(self, article_title: str, pdf_url: str) -> int:
+        """
+        Calculate score adjustment based on title matching.
+        
+        If the PDF filename contains keywords from the article title,
+        it's more likely to be the main document.
+        
+        Args:
+            article_title: Article/document title
+            pdf_url: URL to the PDF
+        
+        Returns:
+            Score adjustment (+30 for match, -20 for clear mismatch, 0 for uncertain)
+        """
+        if not article_title:
+            return 0
+        
+        # Extract filename from URL
+        parsed = urlparse(pdf_url)
+        filename = parsed.path.split("/")[-1].lower()
+        
+        # Clean up filename (remove extension, replace separators)
+        filename_clean = re.sub(r"\.pdf$", "", filename)
+        filename_clean = re.sub(r"[-_]", " ", filename_clean)
+        
+        # Extract keywords from article title (words > 3 chars)
+        title_words = re.findall(r"\b\w{4,}\b", article_title.lower())
+        # Remove common Dutch stop words
+        stop_words = {"deze", "voor", "over", "naar", "door", "zijn", "wordt", "worden", 
+                      "hebben", "heeft", "ging", "hier", "daar", "toen", "maar", "meer"}
+        title_words = [w for w in title_words if w not in stop_words]
+        
+        if not title_words:
+            return 0
+        
+        # Count matches
+        matches = sum(1 for word in title_words if word in filename_clean)
+        match_ratio = matches / len(title_words)
+        
+        if match_ratio >= 0.4:  # 40%+ words match
+            return 40
+        elif match_ratio >= 0.2:  # Some match
+            return 20
+        elif matches == 0 and len(title_words) >= 3:
+            # Clear mismatch: no keywords match and title has enough words
+            return -50  # Strong penalty for mismatched titles
+        
+        return 0
     
     def _download_pdf_from_url(
         self, 

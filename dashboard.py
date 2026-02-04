@@ -1,22 +1,24 @@
 """
 Climate Adaptation Knowledge Base - Dashboard
 
-A simple Streamlit frontend to:
-- Search and browse documents
-- Edit zoektermen and feeds
+A Streamlit frontend to:
+- Search and browse documents (list/card views)
+- Edit zoektermen, feeds, and AI prompts
 - Access PDF files
 - Run the ingestion pipeline
+- Human-in-the-loop AI workflow
 
 Run with: streamlit run dashboard.py
 """
 
+import json
 import os
 import subprocess
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import pandas as pd
 import streamlit as st
-from sqlalchemy import or_
+from sqlalchemy import or_, func
 
 from modules.database import get_session, Document, init_db
 from modules.fetcher import ContentFetcher
@@ -32,12 +34,67 @@ st.set_page_config(
 # Initialize database
 init_db()
 
+# Custom CSS for cards
+st.markdown("""
+<style>
+.doc-card {
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    padding: 16px;
+    margin: 8px 0;
+    background: #fafafa;
+}
+.doc-card:hover {
+    border-color: #1f77b4;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+.doc-title {
+    font-weight: bold;
+    font-size: 1.1em;
+    margin-bottom: 8px;
+    color: #1f77b4;
+}
+.doc-meta {
+    color: #666;
+    font-size: 0.9em;
+    margin-bottom: 4px;
+}
+.badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 0.8em;
+    margin-right: 4px;
+}
+.badge-new { background: #fff3cd; color: #856404; }
+.badge-analyzed { background: #d4edda; color: #155724; }
+.badge-failed { background: #f8d7da; color: #721c24; }
+.badge-pdf { background: #cce5ff; color: #004085; }
+</style>
+""", unsafe_allow_html=True)
 
-def load_documents(search_query: str = "", limit: int = 100) -> pd.DataFrame:
-    """Load documents from database with optional search."""
+
+def get_unique_sources() -> list[str]:
+    """Get unique source names from database."""
+    with get_session() as session:
+        sources = session.query(Document.source_name).distinct().all()
+        return sorted([s[0] for s in sources if s[0]])
+
+
+def load_documents_filtered(
+    search_query: str = "",
+    sources: list[str] = None,
+    status_filter: str = "Alle",
+    has_pdf_filter: str = "Alle",
+    date_from: datetime = None,
+    date_to: datetime = None,
+    limit: int = 100
+) -> list[dict]:
+    """Load documents with filters."""
     with get_session() as session:
         query = session.query(Document)
         
+        # Search filter
         if search_query:
             search = f"%{search_query}%"
             query = query.filter(
@@ -48,23 +105,49 @@ def load_documents(search_query: str = "", limit: int = 100) -> pd.DataFrame:
                 )
             )
         
-        docs = query.order_by(Document.fetched_at.desc()).limit(limit).all()
+        # Source filter (multiselect)
+        if sources and len(sources) > 0:
+            query = query.filter(Document.source_name.in_(sources))
+        
+        # Status filter
+        if status_filter != "Alle":
+            query = query.filter(Document.processing_status == status_filter)
+        
+        # PDF filter
+        if has_pdf_filter == "Met PDF":
+            query = query.filter(Document.local_file_path != None)
+        elif has_pdf_filter == "Zonder PDF":
+            query = query.filter(Document.local_file_path == None)
+        
+        # Date range filter
+        if date_from:
+            query = query.filter(Document.publication_date >= date_from)
+        if date_to:
+            # Add one day to include the end date fully
+            query = query.filter(Document.publication_date <= date_to)
+        
+        # Sort by publication_date descending, with nulls last
+        docs = query.order_by(
+            Document.publication_date.desc().nullslast()
+        ).limit(limit).all()
         
         data = []
         for doc in docs:
             data.append({
-                "ID": doc.id,
-                "Titel": doc.title[:80] + "..." if doc.title and len(doc.title) > 80 else doc.title,
-                "Bron": doc.source_name,
-                "Type": doc.content_type,
-                "Datum": doc.publication_date.strftime("%Y-%m-%d") if doc.publication_date else "",
-                "Status": doc.processing_status,
-                "Heeft PDF": "Ja" if doc.local_file_path else "Nee",
-                "URL": doc.url,
-                "PDF Pad": doc.local_file_path or ""
+                "id": doc.id,
+                "title": doc.title,
+                "source_name": doc.source_name,
+                "content_type": doc.content_type,
+                "publication_date": doc.publication_date,
+                "fetched_at": doc.fetched_at,
+                "processing_status": doc.processing_status,
+                "local_file_path": doc.local_file_path,
+                "url": doc.url,
+                "has_summary": bool(doc.ai_summary),
+                "has_tasks": bool(doc.ai_tasks_json)
             })
         
-        return pd.DataFrame(data)
+        return data
 
 
 def load_file_content(filepath: str) -> str:
@@ -105,98 +188,458 @@ def get_document_details(doc_id: int) -> dict:
                 "processing_status": doc.processing_status,
                 "is_relevant": doc.is_relevant,
                 "ai_summary": doc.ai_summary,
+                "ai_tasks_json": doc.ai_tasks_json,
             }
     return None
 
 
-# Sidebar navigation
-st.sidebar.title("Navigatie")
-page = st.sidebar.radio(
-    "Ga naar",
-    ["Documenten", "Zoektermen", "RSS Feeds", "Pipeline Uitvoeren"]
-)
+def save_ai_summary(doc_id: int, summary: str) -> bool:
+    """Save AI summary to database."""
+    with get_session() as session:
+        doc = session.query(Document).filter(Document.id == doc_id).first()
+        if doc:
+            doc.ai_summary = summary
+            if doc.ai_tasks_json:
+                doc.processing_status = "analyzed"
+            session.commit()
+            return True
+    return False
 
-# Main content
-st.title("Kennisbank Klimaatadaptatie")
 
-if page == "Documenten":
-    st.header("Documentbrowser")
-    
-    # Search box
-    col1, col2 = st.columns([3, 1])
-    with col1:
-        search = st.text_input("Zoek documenten", placeholder="Voer zoektermen in...")
-    with col2:
-        limit = st.selectbox("Toon", [25, 50, 100, 200], index=1)
-    
-    # Load and display documents
-    df = load_documents(search, limit)
-    
-    if df.empty:
-        st.info("Geen documenten gevonden. Voer de pipeline uit om nieuwe documenten op te halen.")
-    else:
-        st.write(f"Toont {len(df)} documenten")
+def save_ai_tasks(doc_id: int, tasks_json: str) -> bool:
+    """Save AI tasks JSON to database."""
+    with get_session() as session:
+        doc = session.query(Document).filter(Document.id == doc_id).first()
+        if doc:
+            doc.ai_tasks_json = tasks_json
+            if doc.ai_summary:
+                doc.processing_status = "analyzed"
+            session.commit()
+            return True
+    return False
+
+
+def render_card(doc: dict):
+    """Render a document card."""
+    with st.container():
+        # Status badges
+        badges = []
+        if doc["processing_status"] == "new":
+            badges.append("🆕 Nieuw")
+        elif doc["processing_status"] == "analyzed":
+            badges.append("✅ Geanalyseerd")
+        elif doc["processing_status"] == "failed":
+            badges.append("❌ Mislukt")
         
-        # Display table
-        st.dataframe(
-            df[["ID", "Titel", "Bron", "Type", "Datum", "Status", "Heeft PDF"]],
-            use_container_width=True,
-            hide_index=True
+        if doc["local_file_path"]:
+            badges.append("📄 PDF")
+        
+        if doc["has_summary"]:
+            badges.append("📝 Samenvatting")
+        if doc["has_tasks"]:
+            badges.append("📊 Opgaven")
+        
+        badge_str = " | ".join(badges)
+        
+        # Format date
+        date_str = ""
+        if doc["publication_date"]:
+            date_str = doc["publication_date"].strftime("%d-%m-%Y")
+        
+        col1, col2 = st.columns([4, 1])
+        
+        with col1:
+            st.markdown(f"**{doc['title'][:100]}{'...' if doc['title'] and len(doc['title']) > 100 else ''}**")
+            st.caption(f"🏢 {doc['source_name'] or 'Onbekend'} | 📅 {date_str} | {badge_str}")
+        
+        with col2:
+            if st.button("📖 Details", key=f"card_{doc['id']}"):
+                st.session_state.selected_doc_id = doc['id']
+                st.session_state.show_detail = True
+                st.rerun()
+        
+        st.divider()
+
+
+def render_document_detail(doc_id: int):
+    """Render the full document detail view with AI workflow."""
+    doc = get_document_details(doc_id)
+    if not doc:
+        st.error(f"Document {doc_id} niet gevonden")
+        return
+    
+    # Back button
+    if st.button("← Terug naar overzicht"):
+        st.session_state.show_detail = False
+        st.rerun()
+    
+    st.header(doc['title'] or "Geen titel")
+    
+    # Meta info
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.write(f"**Bron:** {doc['source_name']}")
+        st.write(f"**Type:** {doc['content_type']}")
+    with col2:
+        st.write(f"**Opgehaald:** {doc['fetched_at'].strftime('%d-%m-%Y %H:%M') if doc['fetched_at'] else 'Onbekend'}")
+        st.write(f"**Status:** {doc['processing_status']}")
+    with col3:
+        st.write(f"**URL:** [{doc['url'][:40]}...]({doc['url']})")
+    
+    # PDF section
+    st.subheader("📄 Document Bestand")
+    if doc['local_file_path']:
+        st.success(f"PDF beschikbaar: `{doc['local_file_path']}`")
+        if os.path.exists(doc['local_file_path']):
+            with open(doc['local_file_path'], "rb") as f:
+                st.download_button(
+                    "⬇️ Download PDF",
+                    f.read(),
+                    file_name=os.path.basename(doc['local_file_path']),
+                    mime="application/pdf"
+                )
+    else:
+        st.warning("Geen PDF gekoppeld aan dit document")
+        if st.button("🔍 Probeer PDF te vinden", key=f"refetch_{doc_id}"):
+            with st.spinner("Zoeken naar PDF op pagina..."):
+                fetcher = ContentFetcher()
+                result = fetcher.fetch(doc['url'], doc['source_name'] or "Onbekend", doc['title'] or "")
+                
+                if result and result["file_path"]:
+                    with get_session() as session:
+                        db_doc = session.query(Document).filter(Document.id == doc_id).first()
+                        if db_doc:
+                            db_doc.content_type = result["type"]
+                            db_doc.local_file_path = result["file_path"]
+                            db_doc.full_text = result["text"]
+                            session.commit()
+                    
+                    st.success(f"PDF gevonden en opgeslagen: {result['file_path']}")
+                    st.rerun()
+                else:
+                    st.info("Geen PDF downloadlink gevonden op deze pagina")
+    
+    # Text preview
+    with st.expander("📜 Volledige Tekst Voorvertoning", expanded=False):
+        if doc['full_text']:
+            st.text_area("", doc['full_text'][:10000], height=300, disabled=True)
+            if len(doc['full_text']) > 10000:
+                st.caption(f"... en nog {len(doc['full_text']) - 10000} karakters")
+        else:
+            st.info("Geen tekst beschikbaar")
+    
+    st.divider()
+    
+    # ==========================================================================
+    # AI WORKFLOW SECTION
+    # ==========================================================================
+    st.header("🤖 AI Analyse Workflow")
+    
+    # Load prompts
+    prompts = config.load_prompts()
+    
+    tab_summary, tab_tasks = st.tabs(["📝 Samenvatting", "📊 Opgave Analyse"])
+    
+    # --- SUMMARY TAB ---
+    with tab_summary:
+        st.subheader("Samenvatting")
+        
+        # Show existing summary if present
+        if doc['ai_summary']:
+            st.success("Samenvatting aanwezig")
+            st.markdown(doc['ai_summary'])
+            st.divider()
+        
+        # Prompt generation
+        with st.expander("🔧 Genereer Prompt voor AI", expanded=not doc['ai_summary']):
+            if st.button("📋 Genereer Samenvatting Prompt", key="gen_summary_prompt"):
+                if doc['full_text']:
+                    prompt_template = prompts.get("summary_prompt", "Maak een samenvatting van: {document_text}")
+                    full_prompt = prompt_template.replace("{document_text}", doc['full_text'])
+                    # Store prompt with document-specific key to avoid stale data
+                    st.session_state[f"summary_prompt_{doc_id}"] = full_prompt
+                    st.rerun()  # Refresh to show updated prompt
+                else:
+                    st.error("Geen tekst beschikbaar om prompt mee te genereren")
+            
+            # Use document-specific key
+            prompt_key = f"summary_prompt_{doc_id}"
+            if prompt_key in st.session_state:
+                char_count = len(st.session_state[prompt_key])
+                st.info(f"📊 Prompt lengte: **{char_count:,}** karakters (~{char_count // 4:,} tokens)")
+                st.text_area(
+                    "Volledige prompt (selecteer alles met Ctrl+A, kopieer met Ctrl+C):",
+                    st.session_state[prompt_key],
+                    height=400,
+                    key=f"summary_prompt_output_{doc_id}"
+                )
+                st.caption("💡 Tip: Gebruik Ctrl+A in het tekstveld hierboven om alles te selecteren, dan Ctrl+C om te kopiëren.")
+        
+        # Input section
+        st.subheader("AI Output Invoeren")
+        summary_input = st.text_area(
+            "Plak hier de AI-gegenereerde samenvatting:",
+            value=doc['ai_summary'] or "",
+            height=200,
+            key="summary_input"
         )
         
-        # Document details
-        st.subheader("Documentdetails")
-        doc_id = st.number_input("Voer Document ID in om details te bekijken", min_value=1, step=1)
-        
-        if st.button("Bekijk Document"):
-            doc = get_document_details(doc_id)
-            if doc:
-                st.write(f"**Titel:** {doc['title']}")
-                st.write(f"**Bron:** {doc['source_name']}")
-                st.write(f"**URL:** [{doc['url']}]({doc['url']})")
-                st.write(f"**Type:** {doc['content_type']}")
-                st.write(f"**Opgehaald:** {doc['fetched_at']}")
-                
-                if doc['local_file_path']:
-                    st.write(f"**PDF:** `{doc['local_file_path']}`")
-                    if os.path.exists(doc['local_file_path']):
-                        with open(doc['local_file_path'], "rb") as f:
-                            st.download_button(
-                                "Download PDF",
-                                f.read(),
-                                file_name=os.path.basename(doc['local_file_path']),
-                                mime="application/pdf"
-                            )
+        if st.button("💾 Opslaan Samenvatting", type="primary", key="save_summary"):
+            if summary_input.strip():
+                if save_ai_summary(doc_id, summary_input.strip()):
+                    st.success("Samenvatting opgeslagen!")
+                    st.rerun()
                 else:
-                    # No PDF - offer to refetch
-                    st.warning("Geen PDF gekoppeld aan dit document")
-                    if st.button("🔍 Probeer PDF te vinden", key=f"refetch_{doc_id}"):
-                        with st.spinner("Zoeken naar PDF op pagina..."):
-                            fetcher = ContentFetcher()
-                            result = fetcher.fetch(doc['url'], doc['source_name'] or "Onbekend", doc['title'] or "")
-                            
-                            if result and result["file_path"]:
-                                # Update database
-                                with get_session() as session:
-                                    db_doc = session.query(Document).filter(Document.id == doc_id).first()
-                                    if db_doc:
-                                        db_doc.content_type = result["type"]
-                                        db_doc.local_file_path = result["file_path"]
-                                        db_doc.full_text = result["text"]
-                                        session.commit()
-                                
-                                st.success(f"PDF gevonden en opgeslagen: {result['file_path']}")
-                                st.rerun()
-                            else:
-                                st.info("Geen PDF downloadlink gevonden op deze pagina")
-                
-                with st.expander("Volledige Tekst Voorvertoning"):
-                    st.text(doc['full_text'][:5000] if doc['full_text'] else "Geen tekst beschikbaar")
+                    st.error("Fout bij opslaan")
             else:
-                st.error(f"Document {doc_id} niet gevonden")
+                st.warning("Voer eerst een samenvatting in")
+    
+    # --- TASKS TAB ---
+    with tab_tasks:
+        st.subheader("Opgave Analyse (21 NAS Opgaven)")
+        
+        # Show existing analysis if present
+        if doc['ai_tasks_json']:
+            st.success("Opgave analyse aanwezig")
+            try:
+                tasks = json.loads(doc['ai_tasks_json'])
+                # Display as a table
+                if tasks:
+                    df = pd.DataFrame([
+                        {"Opgave": k, "Score": v} 
+                        for k, v in tasks.items()
+                    ]).sort_values("Score", ascending=False)
+                    st.dataframe(df, use_container_width=True, hide_index=True)
+            except json.JSONDecodeError:
+                st.warning("Opgeslagen JSON kon niet worden geparsed")
+                st.code(doc['ai_tasks_json'])
+            st.divider()
+        
+        # Prompt generation
+        with st.expander("🔧 Genereer Prompt voor AI", expanded=not doc['ai_tasks_json']):
+            if st.button("📋 Genereer Opgave Analyse Prompt", key="gen_tasks_prompt"):
+                if doc['full_text']:
+                    prompt_template = prompts.get("relevance_prompt", "Analyseer de relevantie: {document_text}")
+                    full_prompt = prompt_template.replace("{document_text}", doc['full_text'])
+                    # Store prompt with document-specific key to avoid stale data
+                    st.session_state[f"tasks_prompt_{doc_id}"] = full_prompt
+                    st.rerun()  # Refresh to show updated prompt
+                else:
+                    st.error("Geen tekst beschikbaar om prompt mee te genereren")
+            
+            # Use document-specific key
+            tasks_prompt_key = f"tasks_prompt_{doc_id}"
+            if tasks_prompt_key in st.session_state:
+                char_count = len(st.session_state[tasks_prompt_key])
+                st.info(f"📊 Prompt lengte: **{char_count:,}** karakters (~{char_count // 4:,} tokens)")
+                st.text_area(
+                    "Volledige prompt (selecteer alles met Ctrl+A, kopieer met Ctrl+C):",
+                    st.session_state[tasks_prompt_key],
+                    height=400,
+                    key=f"tasks_prompt_output_{doc_id}"
+                )
+                st.caption("💡 Tip: Gebruik Ctrl+A in het tekstveld hierboven om alles te selecteren, dan Ctrl+C om te kopiëren.")
+        
+        # Input section
+        st.subheader("AI Output Invoeren")
+        st.caption("Verwacht formaat: JSON met opgave namen en scores, bijv. `{\"Wateroverlast\": 8, \"Hitte\": 5}`")
+        
+        tasks_input = st.text_area(
+            "Plak hier de AI-gegenereerde JSON:",
+            value=doc['ai_tasks_json'] or "",
+            height=200,
+            key="tasks_input"
+        )
+        
+        if st.button("💾 Opslaan Opgave Analyse", type="primary", key="save_tasks"):
+            if tasks_input.strip():
+                # Validate JSON
+                try:
+                    parsed = json.loads(tasks_input.strip())
+                    if isinstance(parsed, dict):
+                        # Re-serialize to ensure clean JSON
+                        clean_json = json.dumps(parsed, ensure_ascii=False, indent=2)
+                        if save_ai_tasks(doc_id, clean_json):
+                            st.success("Opgave analyse opgeslagen!")
+                            st.rerun()
+                        else:
+                            st.error("Fout bij opslaan")
+                    else:
+                        st.error("JSON moet een object zijn (niet een array)")
+                except json.JSONDecodeError as e:
+                    st.error(f"Ongeldige JSON: {e}")
+            else:
+                st.warning("Voer eerst JSON in")
 
-elif page == "Zoektermen":
-    st.header("Zoekterm Configuratie")
+
+# =============================================================================
+# SIDEBAR NAVIGATION
+# =============================================================================
+st.sidebar.title("🌍 Klimaatadaptatie KB")
+page = st.sidebar.radio(
+    "Navigatie",
+    ["📚 Documenten", "🔤 Zoektermen", "📡 RSS Feeds", "💬 Prompt Manager", "▶️ Pipeline"]
+)
+
+# =============================================================================
+# MAIN CONTENT
+# =============================================================================
+
+if page == "📚 Documenten":
+    st.title("Documentbrowser")
+    
+    # Check if we should show detail view
+    if st.session_state.get("show_detail") and st.session_state.get("selected_doc_id"):
+        render_document_detail(st.session_state.selected_doc_id)
+    else:
+        # ==========================================================================
+        # SEARCH BAR
+        # ==========================================================================
+        search_query = st.text_input(
+            "🔍 Zoeken",
+            placeholder="Zoek op titel, inhoud of bron...",
+            label_visibility="collapsed"
+        )
+        
+        # ==========================================================================
+        # FILTER CONTROLS
+        # ==========================================================================
+        with st.expander("🎛️ Filters", expanded=False):
+            col_source, col_status, col_pdf = st.columns(3)
+            
+            with col_source:
+                all_sources = get_unique_sources()
+                selected_sources = st.multiselect(
+                    "📁 Bron",
+                    options=all_sources,
+                    default=[],
+                    placeholder="Alle bronnen"
+                )
+            
+            with col_status:
+                status_filter = st.radio(
+                    "📊 Status",
+                    ["Alle", "new", "analyzed"],
+                    horizontal=True
+                )
+            
+            with col_pdf:
+                pdf_filter = st.radio(
+                    "📄 PDF",
+                    ["Alle", "Met PDF", "Zonder PDF"],
+                    horizontal=True
+                )
+            
+            # Date range
+            col_date1, col_date2, col_limit = st.columns(3)
+            with col_date1:
+                date_from = st.date_input(
+                    "📅 Datum van",
+                    value=None,
+                    format="DD-MM-YYYY"
+                )
+            with col_date2:
+                date_to = st.date_input(
+                    "📅 Datum tot",
+                    value=None,
+                    format="DD-MM-YYYY"
+                )
+            with col_limit:
+                limit = st.selectbox("Max resultaten", [50, 100, 200, 500], index=1)
+        
+        # ==========================================================================
+        # VIEW SWITCHER
+        # ==========================================================================
+        view_mode = st.radio(
+            "Weergave",
+            ["📋 Lijst", "🃏 Kaarten"],
+            horizontal=True,
+            label_visibility="collapsed"
+        )
+        
+        # Convert date inputs to datetime
+        date_from_dt = datetime.combine(date_from, datetime.min.time()) if date_from else None
+        date_to_dt = datetime.combine(date_to, datetime.max.time()) if date_to else None
+        
+        # Load documents with filters
+        docs = load_documents_filtered(
+            search_query=search_query,
+            sources=selected_sources if selected_sources else None,
+            status_filter=status_filter,
+            has_pdf_filter=pdf_filter,
+            date_from=date_from_dt,
+            date_to=date_to_dt,
+            limit=limit
+        )
+        
+        if not docs:
+            st.info("Geen documenten gevonden. Pas de filters aan of voer de pipeline uit.")
+        else:
+            st.caption(f"Toont **{len(docs)}** documenten • Klik op een rij om details te openen")
+            
+            if view_mode == "📋 Lijst":
+                # --- LIST VIEW with clickable rows ---
+                df_data = []
+                doc_ids = []  # Track IDs for row selection
+                
+                for doc in docs:
+                    ai_status = ""
+                    if doc["has_summary"] and doc["has_tasks"]:
+                        ai_status = "✅ Compleet"
+                    elif doc["has_summary"] or doc["has_tasks"]:
+                        ai_status = "⏳ Deels"
+                    else:
+                        ai_status = "❌ Geen"
+                    
+                    doc_ids.append(doc["id"])
+                    df_data.append({
+                        "Datum": doc["publication_date"].strftime("%Y-%m-%d") if doc["publication_date"] else "",
+                        "Titel": doc["title"] or "Geen titel",
+                        "Bron": doc["source_name"] or "",
+                        "Status": doc["processing_status"],
+                        "PDF": "✅" if doc["local_file_path"] else "❌",
+                        "AI": ai_status
+                    })
+                
+                df = pd.DataFrame(df_data)
+                
+                # Configure columns
+                column_config = {
+                    "Datum": st.column_config.TextColumn("Datum", width="small"),
+                    "Titel": st.column_config.TextColumn("Titel", width="large"),
+                    "Bron": st.column_config.TextColumn("Bron", width="medium"),
+                    "Status": st.column_config.TextColumn("Status", width="small"),
+                    "PDF": st.column_config.TextColumn("PDF", width="small"),
+                    "AI": st.column_config.TextColumn("AI", width="small")
+                }
+                
+                # Display dataframe with single-row selection
+                event = st.dataframe(
+                    df,
+                    use_container_width=True,
+                    hide_index=True,
+                    column_config=column_config,
+                    height=500,
+                    on_select="rerun",
+                    selection_mode="single-row"
+                )
+                
+                # Handle row selection - auto-navigate to detail view
+                if event.selection and event.selection.rows:
+                    selected_row_idx = event.selection.rows[0]
+                    selected_doc_id = doc_ids[selected_row_idx]
+                    st.session_state.selected_doc_id = selected_doc_id
+                    st.session_state.show_detail = True
+                    st.rerun()
+            
+            else:
+                # --- CARD VIEW ---
+                for doc in docs:
+                    render_card(doc)
+
+
+elif page == "🔤 Zoektermen":
+    st.title("Zoekterm Configuratie")
     
     tab1, tab2, tab3 = st.tabs(["Tier 1 Zoektermen", "Tier 2 Zoektermen", "Contextwoorden"])
     
@@ -211,7 +654,7 @@ elif page == "Zoektermen":
             height=400
         )
         
-        if st.button("Sla Tier 1 Zoektermen op"):
+        if st.button("Opslaan Tier 1"):
             if save_file_content(tier1_path, new_tier1):
                 st.success("Tier 1 zoektermen opgeslagen!")
     
@@ -226,7 +669,7 @@ elif page == "Zoektermen":
             height=400
         )
         
-        if st.button("Sla Tier 2 Zoektermen op"):
+        if st.button("Opslaan Tier 2"):
             if save_file_content(tier2_path, new_tier2):
                 st.success("Tier 2 zoektermen opgeslagen!")
     
@@ -241,12 +684,13 @@ elif page == "Zoektermen":
             height=300
         )
         
-        if st.button("Sla Contextwoorden op"):
+        if st.button("Opslaan Contextwoorden"):
             if save_file_content(context_path, new_context):
                 st.success("Contextwoorden opgeslagen!")
 
-elif page == "RSS Feeds":
-    st.header("RSS Feed Configuratie")
+
+elif page == "📡 RSS Feeds":
+    st.title("RSS Feed Configuratie")
     
     feeds_path = os.path.join(config.BASE_DIR, "feeds.txt")
     feeds_content = load_file_content(feeds_path)
@@ -262,7 +706,7 @@ elif page == "RSS Feeds":
         height=500
     )
     
-    if st.button("Sla Feeds op"):
+    if st.button("Opslaan Feeds"):
         if save_file_content(feeds_path, new_feeds):
             st.success("Feeds opgeslagen! Wijzigingen worden toegepast bij volgende pipeline run.")
     
@@ -271,8 +715,51 @@ elif page == "RSS Feeds":
         for feed in feeds:
             st.write(f"- **{feed['source_name']}**: `{feed['url'][:60]}...`")
 
-elif page == "Pipeline Uitvoeren":
-    st.header("Voer Ingestie Pipeline uit")
+
+elif page == "💬 Prompt Manager":
+    st.title("Prompt Manager")
+    st.write("Beheer de AI prompts voor samenvatting en opgave analyse.")
+    
+    # Load current prompts
+    prompts = config.load_prompts()
+    
+    st.subheader("📝 Samenvatting Prompt")
+    st.caption("Template voor het genereren van document samenvattingen. Gebruik `{document_text}` als placeholder voor de documenttekst.")
+    summary_prompt = st.text_area(
+        "Samenvatting Prompt",
+        value=prompts.get("summary_prompt", ""),
+        height=200,
+        label_visibility="collapsed"
+    )
+    
+    st.subheader("📊 Relevantie/Opgave Prompt")
+    st.caption("Template voor het analyseren van relevantie voor de 21 NAS opgaven. Gebruik `{document_text}` als placeholder.")
+    relevance_prompt = st.text_area(
+        "Relevantie Prompt",
+        value=prompts.get("relevance_prompt", ""),
+        height=300,
+        label_visibility="collapsed"
+    )
+    
+    if st.button("💾 Opslaan Prompts", type="primary"):
+        new_prompts = {
+            "summary_prompt": summary_prompt,
+            "relevance_prompt": relevance_prompt
+        }
+        if config.save_prompts(new_prompts):
+            st.success("Prompts opgeslagen!")
+        else:
+            st.error("Fout bij opslaan prompts")
+    
+    # Preview section
+    with st.expander("👁️ Prompt Preview"):
+        st.write("Zo ziet de samenvatting prompt eruit met voorbeeld tekst:")
+        preview = summary_prompt.replace("{document_text}", "[... DOCUMENT TEKST HIER ...]")
+        st.code(preview[:500] + "..." if len(preview) > 500 else preview)
+
+
+elif page == "▶️ Pipeline":
+    st.title("Pipeline Uitvoeren")
     
     st.write("""
     Klik op de knop hieronder om de ingestie pipeline handmatig uit te voeren.
@@ -287,21 +774,30 @@ elif page == "Pipeline Uitvoeren":
     with get_session() as session:
         total_docs = session.query(Document).count()
         new_docs = session.query(Document).filter(Document.processing_status == "new").count()
+        analyzed_docs = session.query(Document).filter(Document.processing_status == "analyzed").count()
         docs_with_pdf = session.query(Document).filter(Document.local_file_path != None).count()
         docs_without_pdf = total_docs - docs_with_pdf
+        docs_with_summary = session.query(Document).filter(Document.ai_summary != None).count()
+        docs_with_tasks = session.query(Document).filter(Document.ai_tasks_json != None).count()
     
     col1, col2, col3, col4 = st.columns(4)
-    col1.metric("Totaal Documenten", total_docs)
-    col2.metric("Nieuw (Onverwerkt)", new_docs)
-    col3.metric("Met PDF", docs_with_pdf)
-    col4.metric("Geen PDF", docs_without_pdf)
+    col1.metric("Totaal", total_docs)
+    col2.metric("Nieuw", new_docs)
+    col3.metric("Geanalyseerd", analyzed_docs)
+    col4.metric("Met PDF", docs_with_pdf)
+    
+    col5, col6, col7, col8 = st.columns(4)
+    col5.metric("Zonder PDF", docs_without_pdf)
+    col6.metric("Met Samenvatting", docs_with_summary)
+    col7.metric("Met Opgaven", docs_with_tasks)
+    col8.metric("Feeds", len(config.load_feeds()))
     
     st.subheader("Acties")
     
     col_a, col_b = st.columns(2)
     
     with col_a:
-        if st.button("Voer Pipeline Nu Uit", type="primary"):
+        if st.button("▶️ Voer Pipeline Uit", type="primary"):
             with st.spinner("Pipeline uitvoeren..."):
                 result = subprocess.run(
                     ["python", "main.py"],
@@ -318,8 +814,8 @@ elif page == "Pipeline Uitvoeren":
                     st.code(result.stderr)
     
     with col_b:
-        if st.button("Herhaal Ontbrekende PDF's"):
-            with st.spinner("Zoeken naar PDF's in bestaande documenten..."):
+        if st.button("🔄 Herhaal Ontbrekende PDFs"):
+            with st.spinner("Zoeken naar PDFs in bestaande documenten..."):
                 result = subprocess.run(
                     ["python", "refetch_pdfs.py"],
                     capture_output=True,
@@ -334,7 +830,8 @@ elif page == "Pipeline Uitvoeren":
                     st.error("PDF herhaling mislukt!")
                     st.code(result.stderr)
 
+
 # Footer
 st.sidebar.markdown("---")
-st.sidebar.markdown("**Klimaatadaptatie KB**")
-st.sidebar.markdown(f"Database: `{config.DATABASE_PATH}`")
+st.sidebar.caption(f"Database: `{config.DATABASE_PATH}`")
+st.sidebar.caption(f"PDFs: `{config.PDF_STORAGE_PATH}`")

@@ -8,6 +8,7 @@ All keyword lists and feeds are loaded from separate text files for easy editing
   - feeds.txt           : RSS feed URLs
 """
 
+import json
 import os
 
 # =============================================================================
@@ -23,6 +24,7 @@ TIER1_KEYWORDS_FILE = os.path.join(BASE_DIR, "tier1_keywords.txt")
 TIER2_KEYWORDS_FILE = os.path.join(BASE_DIR, "tier2_keywords.txt")
 CONTEXT_WORDS_FILE = os.path.join(BASE_DIR, "context_words.txt")
 FEEDS_FILE = os.path.join(BASE_DIR, "feeds.txt")
+PROMPTS_FILE = os.path.join(BASE_DIR, "prompts.json")
 
 # =============================================================================
 # FETCHER CONFIGURATION
@@ -125,6 +127,46 @@ def load_feeds() -> list[dict]:
     except FileNotFoundError:
         print(f"Warning: Feeds file not found: {FEEDS_FILE}")
     return feeds
+
+
+def load_prompts() -> dict[str, str]:
+    """
+    Load AI prompts from prompts.json file.
+    
+    Returns:
+        Dict with prompt names as keys and prompt templates as values
+    """
+    try:
+        with open(PROMPTS_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except FileNotFoundError:
+        print(f"Warning: Prompts file not found: {PROMPTS_FILE}")
+        return {
+            "summary_prompt": "Maak een beknopte samenvatting van de volgende tekst...",
+            "relevance_prompt": "Analyseer de relevantie voor de 21 opgaven..."
+        }
+    except json.JSONDecodeError as e:
+        print(f"Warning: Invalid JSON in prompts file: {e}")
+        return {}
+
+
+def save_prompts(prompts: dict[str, str]) -> bool:
+    """
+    Save AI prompts to prompts.json file.
+    
+    Args:
+        prompts: Dict with prompt names as keys and prompt templates as values
+        
+    Returns:
+        True if successful, False otherwise
+    """
+    try:
+        with open(PROMPTS_FILE, "w", encoding="utf-8") as f:
+            json.dump(prompts, f, ensure_ascii=False, indent=2)
+        return True
+    except Exception as e:
+        print(f"Error saving prompts: {e}")
+        return False
 
 
 # =============================================================================
