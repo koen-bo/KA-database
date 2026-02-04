@@ -1,0 +1,22 @@
+# Climate Monitor - Startup Commands
+# ==================================
+
+# 1. Install/update dependencies (run once or after pulling updates)
+pip install -r requirements.txt
+
+# 2. Start the dashboard
+streamlit run dashboard.py
+
+# ----------------------------------------
+# One-liner (install deps + start dashboard)
+pip install -r requirements.txt && streamlit run dashboard.py
+
+# ----------------------------------------
+# Run the pipeline manually (fetch new documents)
+python main.py
+
+# Run pipeline in test mode (dry run)
+python main.py --test
+
+# Re-fetch missing PDFs for existing documents
+python refetch_pdfs.py
