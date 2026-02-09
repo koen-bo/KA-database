@@ -353,9 +353,37 @@ def render_document_detail(doc_id: int):
         # Prompt generation
         with st.expander("🔧 Genereer Prompt voor AI", expanded=not doc['ai_summary']):
             if st.button("📋 Genereer Samenvatting Prompt", key="gen_summary_prompt"):
+                # #region agent log
+                import json as json_module
+                log_data_summary = {
+                    "doc_id": doc_id,
+                    "has_full_text": bool(doc.get('full_text')),
+                    "full_text_length": len(doc.get('full_text') or '')
+                }
+                with open(r"c:\dev\KA-database\.cursor\debug.log", "a", encoding="utf-8") as f:
+                    f.write(json_module.dumps({"location": "dashboard.py:355", "message": "Summary prompt button clicked", "data": log_data_summary, "timestamp": __import__("time").time() * 1000, "runId": "run1", "hypothesisId": "F"}) + "\n")
+                # #endregion
                 if doc['full_text']:
                     prompt_template = prompts.get("summary_prompt", "Maak een samenvatting van: {document_text}")
+                    # #region agent log
+                    log_data_summary2 = {
+                        "prompt_template_length": len(prompt_template),
+                        "has_placeholder": "{document_text}" in prompt_template,
+                        "placeholder_count": prompt_template.count("{document_text}")
+                    }
+                    with open(r"c:\dev\KA-database\.cursor\debug.log", "a", encoding="utf-8") as f:
+                        f.write(json_module.dumps({"location": "dashboard.py:358", "message": "Summary prompt template check", "data": log_data_summary2, "timestamp": __import__("time").time() * 1000, "runId": "run1", "hypothesisId": "G"}) + "\n")
+                    # #endregion
                     full_prompt = prompt_template.replace("{document_text}", doc['full_text'])
+                    # #region agent log
+                    log_data_summary3 = {
+                        "full_prompt_length": len(full_prompt),
+                        "replacement_happened": full_prompt != prompt_template,
+                        "prompt_unchanged": full_prompt == prompt_template
+                    }
+                    with open(r"c:\dev\KA-database\.cursor\debug.log", "a", encoding="utf-8") as f:
+                        f.write(json_module.dumps({"location": "dashboard.py:359", "message": "Summary prompt after replacement", "data": log_data_summary3, "timestamp": __import__("time").time() * 1000, "runId": "run1", "hypothesisId": "H"}) + "\n")
+                    # #endregion
                     # Store prompt with document-specific key to avoid stale data
                     st.session_state[f"summary_prompt_{doc_id}"] = full_prompt
                     st.rerun()  # Refresh to show updated prompt
@@ -418,18 +446,82 @@ def render_document_detail(doc_id: int):
         # Prompt generation
         with st.expander("🔧 Genereer Prompt voor AI", expanded=not doc['ai_tasks_json']):
             if st.button("📋 Genereer Opgave Analyse Prompt", key="gen_tasks_prompt"):
+                # #region agent log
+                import json as json_module
+                log_data = {
+                    "doc_id": doc_id,
+                    "has_full_text": bool(doc.get('full_text')),
+                    "full_text_type": type(doc.get('full_text')).__name__,
+                    "full_text_length": len(doc.get('full_text') or ''),
+                    "full_text_preview": (doc.get('full_text') or '')[:100] if doc.get('full_text') else None
+                }
+                with open(r"c:\dev\KA-database\.cursor\debug.log", "a", encoding="utf-8") as f:
+                    f.write(json_module.dumps({"location": "dashboard.py:421", "message": "Button clicked - checking doc full_text", "data": log_data, "timestamp": __import__("time").time() * 1000, "runId": "run1", "hypothesisId": "A"}) + "\n")
+                # #endregion
                 if doc['full_text']:
                     prompt_template = prompts.get("relevance_prompt", "Analyseer de relevantie: {document_text}")
+                    # #region agent log
+                    log_data2 = {
+                        "prompt_template_length": len(prompt_template),
+                        "has_placeholder": "{document_text}" in prompt_template,
+                        "placeholder_count": prompt_template.count("{document_text}"),
+                        "prompt_template_preview": prompt_template[:200]
+                    }
+                    with open(r"c:\dev\KA-database\.cursor\debug.log", "a", encoding="utf-8") as f:
+                        f.write(json_module.dumps({"location": "dashboard.py:424", "message": "Before replacement - prompt template check", "data": log_data2, "timestamp": __import__("time").time() * 1000, "runId": "run1", "hypothesisId": "B"}) + "\n")
+                    # #endregion
                     full_prompt = prompt_template.replace("{document_text}", doc['full_text'])
+                    # #region agent log
+                    doc_start_marker = "DOCUMENT:\n"
+                    doc_start_idx = full_prompt.find(doc_start_marker)
+                    doc_after_marker = full_prompt[doc_start_idx + len(doc_start_marker):doc_start_idx + len(doc_start_marker) + 200] if doc_start_idx >= 0 else "MARKER_NOT_FOUND"
+                    log_data3 = {
+                        "full_prompt_length": len(full_prompt),
+                        "replacement_happened": full_prompt != prompt_template,
+                        "full_prompt_preview": full_prompt[:300],
+                        "doc_text_in_result": doc['full_text'][:100] in full_prompt if doc['full_text'] else False,
+                        "doc_start_marker_found": doc_start_idx >= 0,
+                        "text_after_document_marker": doc_after_marker,
+                        "full_prompt_end": full_prompt[-200:] if len(full_prompt) > 200 else full_prompt
+                    }
+                    with open(r"c:\dev\KA-database\.cursor\debug.log", "a", encoding="utf-8") as f:
+                        f.write(json_module.dumps({"location": "dashboard.py:426", "message": "After replacement - checking result", "data": log_data3, "timestamp": __import__("time").time() * 1000, "runId": "run1", "hypothesisId": "C"}) + "\n")
+                    # #endregion
                     # Store prompt with document-specific key to avoid stale data
                     st.session_state[f"tasks_prompt_{doc_id}"] = full_prompt
+                    # #region agent log
+                    log_data4 = {
+                        "session_state_key": f"tasks_prompt_{doc_id}",
+                        "stored_value_length": len(full_prompt),
+                        "stored_value_preview": full_prompt[:200]
+                    }
+                    with open(r"c:\dev\KA-database\.cursor\debug.log", "a", encoding="utf-8") as f:
+                        f.write(json_module.dumps({"location": "dashboard.py:428", "message": "Stored in session_state", "data": log_data4, "timestamp": __import__("time").time() * 1000, "runId": "run1", "hypothesisId": "D"}) + "\n")
+                    # #endregion
                     st.rerun()  # Refresh to show updated prompt
                 else:
+                    # #region agent log
+                    with open(r"c:\dev\KA-database\.cursor\debug.log", "a", encoding="utf-8") as f:
+                        f.write(json_module.dumps({"location": "dashboard.py:430", "message": "No full_text available", "data": {"doc_id": doc_id, "full_text_value": str(doc.get('full_text'))}, "timestamp": __import__("time").time() * 1000, "runId": "run1", "hypothesisId": "A"}) + "\n")
+                    # #endregion
                     st.error("Geen tekst beschikbaar om prompt mee te genereren")
             
             # Use document-specific key
             tasks_prompt_key = f"tasks_prompt_{doc_id}"
             if tasks_prompt_key in st.session_state:
+                # #region agent log
+                import json as json_module
+                stored_prompt = st.session_state[tasks_prompt_key]
+                log_data5 = {
+                    "session_state_key": tasks_prompt_key,
+                    "stored_prompt_length": len(stored_prompt),
+                    "has_placeholder": "{document_text}" in stored_prompt,
+                    "stored_prompt_preview": stored_prompt[:300],
+                    "has_doc_text": doc.get('full_text', '')[:50] in stored_prompt if doc.get('full_text') else False
+                }
+                with open(r"c:\dev\KA-database\.cursor\debug.log", "a", encoding="utf-8") as f:
+                    f.write(json_module.dumps({"location": "dashboard.py:434", "message": "Displaying prompt from session_state", "data": log_data5, "timestamp": __import__("time").time() * 1000, "runId": "run1", "hypothesisId": "E"}) + "\n")
+                # #endregion
                 char_count = len(st.session_state[tasks_prompt_key])
                 st.info(f"📊 Prompt lengte: **{char_count:,}** karakters (~{char_count // 4:,} tokens)")
                 st.text_area(
@@ -724,22 +816,79 @@ elif page == "💬 Prompt Manager":
     prompts = config.load_prompts()
     
     st.subheader("📝 Samenvatting Prompt")
-    st.caption("Template voor het genereren van document samenvattingen. Gebruik `{document_text}` als placeholder voor de documenttekst.")
-    summary_prompt = st.text_area(
-        "Samenvatting Prompt",
-        value=prompts.get("summary_prompt", ""),
-        height=200,
-        label_visibility="collapsed"
+    st.caption("Template voor het genereren van document samenvattingen. De `{document_text}` placeholder is beschermd en kan niet worden verwijderd.")
+    
+    # Split summary prompt at {document_text}
+    summary_template = prompts.get("summary_prompt", "")
+    placeholder = "{document_text}"
+    if placeholder in summary_template:
+        summary_before, summary_after = summary_template.split(placeholder, 1)
+    else:
+        # If placeholder missing, add it at the end
+        summary_before = summary_template
+        summary_after = ""
+    
+    summary_before_edit = st.text_area(
+        "Prompt voor de documenttekst:",
+        value=summary_before,
+        height=150,
+        key="summary_before"
     )
     
-    st.subheader("📊 Relevantie/Opgave Prompt")
-    st.caption("Template voor het analyseren van relevantie voor de 21 NAS opgaven. Gebruik `{document_text}` als placeholder.")
-    relevance_prompt = st.text_area(
-        "Relevantie Prompt",
-        value=prompts.get("relevance_prompt", ""),
-        height=300,
-        label_visibility="collapsed"
+    st.text_area(
+        "Placeholder (alleen-lezen):",
+        value=placeholder,
+        height=50,
+        disabled=True,
+        key="summary_placeholder"
     )
+    
+    summary_after_edit = st.text_area(
+        "Prompt na de documenttekst:",
+        value=summary_after,
+        height=150,
+        key="summary_after"
+    )
+    
+    # Reconstruct full prompt
+    summary_prompt = summary_before_edit + placeholder + summary_after_edit
+    
+    st.subheader("📊 Relevantie/Opgave Prompt")
+    st.caption("Template voor het analyseren van relevantie voor de 21 NAS opgaven. De `{document_text}` placeholder is beschermd en kan niet worden verwijderd.")
+    
+    # Split relevance prompt at {document_text}
+    relevance_template = prompts.get("relevance_prompt", "")
+    if placeholder in relevance_template:
+        relevance_before, relevance_after = relevance_template.split(placeholder, 1)
+    else:
+        # If placeholder missing, add it at the end
+        relevance_before = relevance_template
+        relevance_after = ""
+    
+    relevance_before_edit = st.text_area(
+        "Prompt voor de documenttekst:",
+        value=relevance_before,
+        height=200,
+        key="relevance_before"
+    )
+    
+    st.text_area(
+        "Placeholder (alleen-lezen):",
+        value=placeholder,
+        height=50,
+        disabled=True,
+        key="relevance_placeholder"
+    )
+    
+    relevance_after_edit = st.text_area(
+        "Prompt na de documenttekst:",
+        value=relevance_after,
+        height=150,
+        key="relevance_after"
+    )
+    
+    # Reconstruct full prompt
+    relevance_prompt = relevance_before_edit + placeholder + relevance_after_edit
     
     if st.button("💾 Opslaan Prompts", type="primary"):
         new_prompts = {
