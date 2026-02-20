@@ -1,0 +1,12 @@
+.git/
+__pycache__/
+*.py[cod]
+.env
+.env.local
+*.log
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+.github/
