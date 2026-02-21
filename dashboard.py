@@ -3,7 +3,7 @@ Climate Adaptation Knowledge Base - Dashboard
 
 A Streamlit frontend to:
 - Search and browse documents (list/card views)
-- Edit zoektermen, feeds, and AI prompts
+- Edit zoektermen and AI prompts
 - Access PDF files
 - Run the ingestion pipeline
 - Human-in-the-loop AI workflow
@@ -783,29 +783,24 @@ elif page == "🔤 Zoektermen":
 
 elif page == "📡 RSS Feeds":
     st.title("RSS Feed Configuratie")
-    
-    feeds_path = os.path.join(config.BASE_DIR, "feeds.txt")
-    feeds_content = load_file_content(feeds_path)
-    
+
+    feeds, feeds_error, feeds_path = config.load_feeds_with_status()
+    if feeds_error:
+        st.warning(feeds_error)
+
     # Show current stats
-    feeds = config.load_feeds()
     st.info(f"Momenteel geconfigureerd: **{len(feeds)} feeds**")
-    
-    # Feed editor
-    new_feeds = st.text_area(
-        "Bewerk RSS Feeds (formaat: URL | Bronnaam)",
-        feeds_content,
-        height=500
-    )
-    
-    if st.button("Opslaan Feeds"):
-        if save_file_content(feeds_path, new_feeds):
-            st.success("Feeds opgeslagen! Wijzigingen worden toegepast bij volgende pipeline run.")
-    
-    # Show feed list
+
+    st.caption(f"Bronbestand: `{feeds_path}`")
+
+    # Show feed list (read-only)
     with st.expander("Bekijk Huidige Feeds"):
+        if not feeds:
+            st.write("Geen actieve feeds gevonden.")
         for feed in feeds:
-            st.write(f"- **{feed['source_name']}**: `{feed['url'][:60]}...`")
+            source_name = feed.get("source_name", "Unknown")
+            url = feed.get("url", "")
+            st.text(f"{source_name}: {url}")
 
 
 elif page == "💬 Prompt Manager":

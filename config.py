@@ -108,9 +108,35 @@ def load_feeds() -> list[dict]:
     Load RSS feeds from feeds.txt file.
     Format: URL | Source Name
     """
+    feeds, _, _ = load_feeds_with_status()
+    return feeds
+
+
+def get_feeds_file_path() -> str:
+    """Resolve feeds file path with priority: KA_FEEDS_FILE, /data/feeds.txt, repo feeds.txt."""
+    env_feeds_file = os.getenv("KA_FEEDS_FILE")
+    if env_feeds_file and os.path.exists(env_feeds_file):
+        return env_feeds_file
+
+    data_feeds_file = "/data/feeds.txt"
+    if os.path.exists(data_feeds_file):
+        return data_feeds_file
+
+    return FEEDS_FILE
+
+
+def load_feeds_with_status() -> tuple[list[dict], str | None, str]:
+    """
+    Load RSS feeds and return status details for UI/diagnostics.
+
+    Returns:
+        Tuple of (feeds, error_message, filepath_used)
+    """
     feeds = []
+    feeds_path = get_feeds_file_path()
+
     try:
-        with open(FEEDS_FILE, "r", encoding="utf-8") as f:
+        with open(feeds_path, "r", encoding="utf-8") as f:
             for line in f:
                 line = line.strip()
                 if line and not line.startswith("#"):
@@ -126,8 +152,11 @@ def load_feeds() -> list[dict]:
                             "source_name": "Unknown"
                         })
     except FileNotFoundError:
-        print(f"Warning: Feeds file not found: {FEEDS_FILE}")
-    return feeds
+        return [], f"Feedsbestand niet gevonden: {feeds_path}", feeds_path
+    except OSError as e:
+        return [], f"Feedsbestand kan niet worden gelezen ({feeds_path}): {e}", feeds_path
+
+    return feeds, None, feeds_path
 
 
 def load_prompts() -> dict[str, str]:
