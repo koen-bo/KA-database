@@ -7,7 +7,7 @@ SQLAlchemy 2.0+ ORM model for the documents table.
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import create_engine, String, Text, Boolean, DateTime, Integer
+from sqlalchemy import create_engine, String, Text, Boolean, DateTime, Integer, event
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, Session, sessionmaker
 
 import config
@@ -66,6 +66,16 @@ def get_engine():
     if _engine is None:
         database_url = f"sqlite:///{config.DATABASE_PATH}"
         _engine = create_engine(database_url, echo=False)
+
+        # Apply SQLite PRAGMAs on every new DB-API connection.
+        if database_url.startswith("sqlite"):
+            @event.listens_for(_engine, "connect")
+            def _set_sqlite_pragma(dbapi_connection, _):
+                cursor = dbapi_connection.cursor()
+                cursor.execute("PRAGMA journal_mode=WAL;")
+                cursor.execute("PRAGMA synchronous=NORMAL;")
+                cursor.execute("PRAGMA foreign_keys=ON;")
+                cursor.close()
     return _engine
 
 
@@ -81,6 +91,7 @@ def init_db() -> None:
     """Initialize the database by creating all tables."""
     engine = get_engine()
     Base.metadata.create_all(engine)
+    print("SQLite PRAGMAs enabled: journal_mode=WAL, synchronous=NORMAL, foreign_keys=ON")
     print(f"Database initialized: {config.DATABASE_PATH}")
 
 

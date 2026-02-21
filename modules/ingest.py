@@ -6,7 +6,7 @@ Fetches RSS feeds, filters by relevance, downloads content, and stores in databa
 
 from datetime import datetime
 from typing import Optional
-import time
+import os
 
 import feedparser
 
@@ -32,6 +32,7 @@ class RSSIngester:
     def __init__(self):
         """Initialize the ingester."""
         self.fetcher = ContentFetcher()
+        self.max_entries_per_feed = self._load_max_entries_per_feed()
         self.stats = {
             "feeds_processed": 0,
             "entries_found": 0,
@@ -52,6 +53,7 @@ class RSSIngester:
         print("\n" + "=" * 60)
         print("CLIMATE MONITOR - RSS INGESTION")
         print("=" * 60)
+        print(f"Entry cap per feed: {self.max_entries_per_feed}")
         
         # Initialize database
         init_db()
@@ -96,6 +98,13 @@ class RSSIngester:
             self.stats["feeds_processed"] += 1
             entries = feed.entries
             print(f"    Found {len(entries)} entries")
+
+            if len(entries) > self.max_entries_per_feed:
+                print(
+                    f"    Feed returned {len(entries)} entries; "
+                    f"processing first {self.max_entries_per_feed}."
+                )
+                entries = entries[:self.max_entries_per_feed]
             
             for entry in entries:
                 self._process_entry(entry, source_name)
@@ -183,6 +192,21 @@ class RSSIngester:
                 except:
                     pass
         return None
+
+    def _load_max_entries_per_feed(self) -> int:
+        """Load per-feed entry cap from env var with safe fallback."""
+        raw_value = os.getenv("KA_MAX_ENTRIES_PER_FEED", "50")
+        try:
+            parsed = int(raw_value)
+            if parsed <= 0:
+                raise ValueError("must be > 0")
+            return parsed
+        except (ValueError, TypeError):
+            print(
+                f"[WARNING] Invalid KA_MAX_ENTRIES_PER_FEED='{raw_value}'. "
+                "Falling back to 50."
+            )
+            return 50
     
     def _print_summary(self) -> None:
         """Print ingestion summary."""

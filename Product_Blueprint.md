@@ -164,3 +164,20 @@ main.py (Orchestrator)
 /modules folder for database.py, fetcher.py, ai.py.
 
 .env for secrets.
+
+7. Runtime Reliability Controls
+SQLite WAL Mode:
+- SQLite connections enable PRAGMAs centrally on connect:
+  - journal_mode=WAL
+  - synchronous=NORMAL
+  - foreign_keys=ON
+
+Ingestion Lock:
+- Pipeline runs use a filesystem lock at `{KA_DATA_DIR}/ingestion.lock`.
+- If lock exists and is newer than 2 hours, the run is skipped (exit code 0).
+- If lock is older than 2 hours, it is treated as stale, replaced, and the run continues.
+- Lock metadata includes timestamp, hostname, and pid.
+
+Feed Entry Guardrail:
+- Per-feed processing is capped via `KA_MAX_ENTRIES_PER_FEED`.
+- Default is 50 entries per feed when env var is unset/invalid.
