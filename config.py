@@ -16,8 +16,9 @@ import os
 # =============================================================================
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DATABASE_PATH = os.path.join(BASE_DIR, "kennisbank.db")
-PDF_STORAGE_PATH = os.path.join(BASE_DIR, "pdfs")
+DATA_DIR = os.getenv("KA_DATA_DIR", BASE_DIR)
+DATABASE_PATH = os.path.join(DATA_DIR, "kennisbank.db")
+PDF_STORAGE_PATH = os.path.join(DATA_DIR, "pdfs")
 
 # Keyword files
 TIER1_KEYWORDS_FILE = os.path.join(BASE_DIR, "tier1_keywords.txt")
