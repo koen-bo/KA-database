@@ -30,3 +30,8 @@ Thumbs.db
 # because they need to be committed for GitHub Actions:
 # - kennisbank.db (the database)
 # - pdfs/ (downloaded PDF files)
+# Runtime data (local only)
+kennisbank.db
+kennisbank.db-wal
+kennisbank.db-shm
+pdfs/
