@@ -88,7 +88,7 @@ def load_documents_filtered(
     has_pdf_filter: str = "Alle",
     date_from: datetime = None,
     date_to: datetime = None,
-    limit: int = 100
+    limit: int = 500
 ) -> list[dict]:
     """Load documents with filters."""
     with get_session() as session:
@@ -637,7 +637,7 @@ if page == "📚 Documenten":
                     format="DD-MM-YYYY"
                 )
             with col_limit:
-                limit = st.selectbox("Max resultaten", [50, 100, 200, 500], index=1)
+                limit = st.selectbox("Max resultaten", [100, 200, 500, 1000], index=2)
         
         # ==========================================================================
         # VIEW SWITCHER
