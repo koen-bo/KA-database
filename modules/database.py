@@ -7,7 +7,7 @@ SQLAlchemy 2.0+ ORM model for the documents table.
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import create_engine, String, Text, Boolean, DateTime, Integer, event
+from sqlalchemy import create_engine, String, Text, Boolean, DateTime, Integer, event, text, func
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, Session, sessionmaker
 
 import config
@@ -34,6 +34,8 @@ class Document(Base):
     source_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     title: Mapped[Optional[str]] = mapped_column(String(1024), nullable=True)
     publication_date: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    discovery_method: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    discovery_source_url: Mapped[Optional[str]] = mapped_column(String(2048), nullable=True)
     
     # Fetching metadata
     fetched_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
@@ -91,8 +93,23 @@ def init_db() -> None:
     """Initialize the database by creating all tables."""
     engine = get_engine()
     Base.metadata.create_all(engine)
+    _ensure_schema_columns()
     print("SQLite PRAGMAs enabled: journal_mode=WAL, synchronous=NORMAL, foreign_keys=ON")
     print(f"Database initialized: {config.DATABASE_PATH}")
+
+
+def _ensure_schema_columns() -> None:
+    """Idempotent schema migration for newly introduced columns."""
+    engine = get_engine()
+    with engine.begin() as conn:
+        existing_columns = {
+            row[1]
+            for row in conn.execute(text("PRAGMA table_info(documents);")).fetchall()
+        }
+        if "discovery_method" not in existing_columns:
+            conn.execute(text("ALTER TABLE documents ADD COLUMN discovery_method TEXT;"))
+        if "discovery_source_url" not in existing_columns:
+            conn.execute(text("ALTER TABLE documents ADD COLUMN discovery_source_url TEXT;"))
 
 
 def url_exists(url: str) -> bool:
@@ -110,7 +127,9 @@ def add_document(
     content_type: Optional[str] = None,
     local_file_path: Optional[str] = None,
     full_text: Optional[str] = None,
-    processing_status: str = "new"
+    processing_status: str = "new",
+    discovery_method: Optional[str] = None,
+    discovery_source_url: Optional[str] = None,
 ) -> Document:
     """
     Add a new document to the database.
@@ -134,6 +153,8 @@ def add_document(
             source_name=source_name,
             title=title,
             publication_date=publication_date,
+            discovery_method=discovery_method,
+            discovery_source_url=discovery_source_url,
             fetched_at=datetime.now(),
             content_type=content_type,
             local_file_path=local_file_path,
@@ -150,6 +171,29 @@ def get_documents_by_status(status: str) -> list[Document]:
     """Get all documents with a specific processing status."""
     with get_session() as session:
         return session.query(Document).filter(Document.processing_status == status).all()
+
+
+def get_latest_source_timestamp(source_name: str) -> Optional[datetime]:
+    """
+    Return latest known timestamp for a source.
+
+    Uses max(publication_date) and max(fetched_at), then returns the newest of both.
+    """
+    with get_session() as session:
+        max_pub = (
+            session.query(func.max(Document.publication_date))
+            .filter(Document.source_name == source_name)
+            .scalar()
+        )
+        max_fetch = (
+            session.query(func.max(Document.fetched_at))
+            .filter(Document.source_name == source_name)
+            .scalar()
+        )
+
+    if max_pub and max_fetch:
+        return max_pub if max_pub >= max_fetch else max_fetch
+    return max_pub or max_fetch
 
 
 def update_document_analysis(

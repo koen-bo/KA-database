@@ -1,0 +1,146 @@
+{
+  "stowa_nieuws": {
+    "item_selector": "article, .news-item, .views-row",
+    "link_selector": "a[href]",
+    "title_selector": "h2 a, h3 a, .field--name-title a, .title a",
+    "date_selector": "time, .date",
+    "summary_selector": ".summary, .intro, p",
+    "pagination_selector": ".pagination, nav.pagination, .pager",
+    "next_page_selector": "a[rel='next'], a.next, .next a"
+  },
+  "stowa_publicaties": {
+    "item_selector": "article, .publication-item, .views-row",
+    "link_selector": "a[href]",
+    "title_selector": "h2 a, h3 a, .field--name-title a, .title a",
+    "date_selector": "time, .date",
+    "summary_selector": ".summary, .intro, p",
+    "pagination_selector": ".pagination, nav.pagination, .pager",
+    "next_page_selector": "a[rel='next'], a.next, .next a"
+  },
+  "rioned_nieuws": {
+    "item_selector": "article, .news-item, .views-row, li",
+    "link_selector": "a[href]",
+    "title_selector": "h2 a, h3 a, .title a",
+    "date_selector": "time, .date",
+    "summary_selector": ".summary, .intro, p",
+    "pagination_selector": ".pagination, .pager, nav.pagination",
+    "next_page_selector": "a[rel='next'], a.next, .next a"
+  },
+  "rioned_archief": {
+    "item_selector": "article, .news-item, .views-row, li",
+    "link_selector": "a[href]",
+    "title_selector": "h2 a, h3 a, .title a",
+    "date_selector": "time, .date",
+    "summary_selector": ".summary, .intro, p",
+    "pagination_selector": ".pagination, .pager, nav.pagination",
+    "next_page_selector": "a[rel='next'], a.next, .next a"
+  },
+  "crow_actueel": {
+    "item_selector": "article, .news-item, .views-row, li",
+    "link_selector": "a[href]",
+    "title_selector": "h2 a, h3 a, .title a",
+    "date_selector": "time, .date",
+    "summary_selector": ".summary, .intro, p",
+    "pagination_selector": ".pagination, .pager, nav.pagination",
+    "next_page_selector": "a[rel='next'], a.next, .next a"
+  },
+  "ggdghor_nieuws": {
+    "item_selector": "article, .news-item, .post, li",
+    "link_selector": "a[href]",
+    "title_selector": "h2 a, h3 a, .entry-title a, .title a",
+    "date_selector": "time, .date",
+    "summary_selector": ".summary, .intro, .entry-summary, p",
+    "pagination_selector": ".pagination, nav.pagination",
+    "next_page_selector": "a.next, a[rel='next'], .next a"
+  },
+  "kanl_actueel": {
+    "item_selector": "article, .news-item, .views-row, li",
+    "link_selector": "a[href]",
+    "title_selector": "h2 a, h3 a, .title a",
+    "date_selector": "time, .date",
+    "summary_selector": ".summary, .intro, p",
+    "pagination_selector": ".pagination, nav.pagination, .pager",
+    "next_page_selector": "a[rel='next'], a.next, .next a"
+  },
+  "verzekeraars_actueel": {
+    "item_selector": "article, .news-item, .views-row, li",
+    "link_selector": "a[href]",
+    "title_selector": "h2 a, h3 a, .title a",
+    "date_selector": "time, .date",
+    "summary_selector": ".summary, .intro, p",
+    "pagination_selector": ".pagination, nav.pagination, .pager",
+    "next_page_selector": "a[rel='next'], a.next, .next a"
+  },
+  "netbeheer_publicaties": {
+    "item_selector": "article, .publication-item, .news-item, li",
+    "link_selector": "a[href]",
+    "title_selector": "h2 a, h3 a, .title a",
+    "date_selector": "time, .date",
+    "summary_selector": ".summary, .intro, p",
+    "pagination_selector": ".pagination, nav.pagination, .pager",
+    "next_page_selector": "a[rel='next'], a.next, .next a"
+  },
+  "netbeheer_nieuws": {
+    "item_selector": "article, .news-item, li",
+    "link_selector": "a[href]",
+    "title_selector": "h2 a, h3 a, .title a",
+    "date_selector": "time, .date",
+    "summary_selector": ".summary, .intro, p",
+    "pagination_selector": ".pagination, nav.pagination, .pager",
+    "next_page_selector": "a[rel='next'], a.next, .next a"
+  },
+  "veiligheidsberaad_nieuws": {
+    "item_selector": "article, .news-item, .post, li",
+    "link_selector": "a[href]",
+    "title_selector": "h2 a, h3 a, .entry-title a, .title a",
+    "date_selector": "time, .date",
+    "summary_selector": ".summary, .intro, .entry-summary, p",
+    "pagination_selector": ".pagination, nav.pagination, .pager",
+    "next_page_selector": "a[rel='next'], a.next, .next a"
+  },
+  "veiligheidsberaad_klimaat": {
+    "item_selector": "article, .news-item, .post, li",
+    "link_selector": "a[href]",
+    "title_selector": "h2 a, h3 a, .entry-title a, .title a",
+    "date_selector": "time, .date",
+    "summary_selector": ".summary, .intro, .entry-summary, p",
+    "pagination_selector": ".pagination, nav.pagination, .pager",
+    "next_page_selector": "a[rel='next'], a.next, .next a"
+  },
+  "vng_nieuws": {
+    "item_selector": "article, .news-item, .views-row, li",
+    "link_selector": "a[href]",
+    "title_selector": "h2 a, h3 a, .title a",
+    "date_selector": "time, .date",
+    "summary_selector": ".summary, .intro, p",
+    "pagination_selector": ".pagination, nav.pagination, .pager",
+    "next_page_selector": "a[rel='next'], a.next, .next a"
+  },
+  "vng_publicaties": {
+    "item_selector": "article, .publication-item, .news-item, li",
+    "link_selector": "a[href]",
+    "title_selector": "h2 a, h3 a, .title a",
+    "date_selector": "time, .date",
+    "summary_selector": ".summary, .intro, p",
+    "pagination_selector": ".pagination, nav.pagination, .pager",
+    "next_page_selector": "a[rel='next'], a.next, .next a"
+  },
+  "vng_rubriek": {
+    "item_selector": "article, .news-item, .views-row, li",
+    "link_selector": "a[href]",
+    "title_selector": "h2 a, h3 a, .title a",
+    "date_selector": "time, .date",
+    "summary_selector": ".summary, .intro, p",
+    "pagination_selector": ".pagination, nav.pagination, .pager",
+    "next_page_selector": "a[rel='next'], a.next, .next a"
+  },
+  "climate_adapt_listing": {
+    "item_selector": "article, .tileItem, .news-item, li",
+    "link_selector": "a[href]",
+    "title_selector": "h2 a, h3 a, .title a, .tileHeadline a",
+    "date_selector": "time, .date, .tileDate",
+    "summary_selector": ".summary, .intro, .description, p",
+    "pagination_selector": ".pagination, nav.pagination, .pager",
+    "next_page_selector": "a[rel='next'], a.next, .next a"
+  }
+}

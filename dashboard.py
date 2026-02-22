@@ -782,25 +782,23 @@ elif page == "🔤 Zoektermen":
 
 
 elif page == "📡 RSS Feeds":
-    st.title("RSS Feed Configuratie")
+    st.title("Bron Configuratie")
 
-    feeds, feeds_error, feeds_path = config.load_feeds_with_status()
-    if feeds_error:
-        st.warning(feeds_error)
+    sources, sources_error, sources_path = config.load_sources_with_status()
+    if sources_error:
+        st.warning(sources_error)
 
-    # Show current stats
-    st.info(f"Momenteel geconfigureerd: **{len(feeds)} feeds**")
+    st.info(f"Momenteel geconfigureerd: **{len(sources)} bronnen**")
+    st.caption(f"Bronbestand: `{sources_path}`")
 
-    st.caption(f"Bronbestand: `{feeds_path}`")
-
-    # Show feed list (read-only)
-    with st.expander("Bekijk Huidige Feeds"):
-        if not feeds:
-            st.write("Geen actieve feeds gevonden.")
-        for feed in feeds:
-            source_name = feed.get("source_name", "Unknown")
-            url = feed.get("url", "")
-            st.text(f"{source_name}: {url}")
+    with st.expander("Bekijk Huidige Bronnen"):
+        if not sources:
+            st.write("Geen actieve bronnen gevonden.")
+        for source in sources:
+            method = source.get("method", "rss")
+            source_name = source.get("source_name", "Unknown")
+            url = source.get("url", "")
+            st.text(f"[{method}] {source_name}: {url}")
 
 
 elif page == "💬 Prompt Manager":
@@ -908,7 +906,7 @@ elif page == "▶️ Pipeline":
     st.write("""
     Klik op de knop hieronder om de ingestie pipeline handmatig uit te voeren.
     Dit zal:
-    1. Alle geconfigureerde RSS feeds ophalen
+    1. Alle geconfigureerde bronnen ophalen (RSS/sitemap/listing)
     2. Filteren op zoektermen
     3. Relevante documenten downloaden
     4. Opslaan in database
@@ -934,7 +932,7 @@ elif page == "▶️ Pipeline":
     col5.metric("Zonder PDF", docs_without_pdf)
     col6.metric("Met Samenvatting", docs_with_summary)
     col7.metric("Met Opgaven", docs_with_tasks)
-    col8.metric("Feeds", len(config.load_feeds()))
+    col8.metric("Bronnen", len(config.load_sources()))
     
     st.subheader("Acties")
     

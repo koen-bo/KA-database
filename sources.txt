@@ -1,0 +1,81 @@
+# Multi-source configuration
+# Format:
+# method | source_name | url | options_json
+#
+# method: rss | sitemap | listing
+
+# =============================================================================
+# LEGACY RSS FEEDS (RESTORED - 25/25)
+# =============================================================================
+# Rijksoverheid
+rss | Rijksoverheid - Klimaat Nieuws | https://feeds.rijksoverheid.nl/onderwerpen/klimaatverandering/nieuws.rss | {}
+rss | Rijksoverheid - Water Nieuws | https://feeds.rijksoverheid.nl/onderwerpen/water/nieuws.rss | {}
+rss | Rijksoverheid - Natuur Nieuws | https://feeds.rijksoverheid.nl/onderwerpen/natuur-en-biodiversiteit/nieuws.rss | {}
+rss | Rijksoverheid - Klimaat Documenten | https://feeds.rijksoverheid.nl/onderwerpen/klimaatverandering/documenten.rss | {}
+rss | Rijksoverheid - Water Documenten | https://feeds.rijksoverheid.nl/onderwerpen/water/documenten.rss | {}
+rss | Rijksoverheid - Kamerstukken | https://feeds.rijksoverheid.nl/kamerstukken.rss | {}
+rss | Min. IenW - Nieuws (incl. RWS) | https://feeds.rijksoverheid.nl/ministeries/ministerie-van-infrastructuur-en-waterstaat/nieuws.rss | {}
+rss | Min. IenW - Kamerstukken | https://feeds.rijksoverheid.nl/ministeries/ministerie-van-infrastructuur-en-waterstaat/kamerstukken.rss | {}
+rss | Min. LNV - Nieuws | https://feeds.rijksoverheid.nl/ministeries/ministerie-van-landbouw-visserij-voedselzekerheid-en-natuur/nieuws.rss | {}
+rss | Min. VRO - Nieuws | https://feeds.rijksoverheid.nl/ministeries/ministerie-van-volkshuisvesting-en-ruimtelijke-ordening/nieuws.rss | {}
+
+# Institutions and research
+rss | Tweede Kamer | https://www.tweedekamer.nl/rss.xml | {}
+rss | PBL - Klimaat en Energie | https://www.pbl.nl/feed/topic/13/article/rss.xml | {}
+rss | PBL - Water | https://www.pbl.nl/feed/topic/6/article/rss.xml | {}
+rss | PBL - Natuur en Biodiversiteit | https://www.pbl.nl/feed/topic/11/article/rss.xml | {}
+rss | PBL - Klimaat Publicaties | https://www.pbl.nl/feed/topic/13/publication/rss.xml | {}
+rss | PBL - Water Publicaties | https://www.pbl.nl/feed/topic/6/publication/rss.xml | {}
+rss | Raad voor de Leefomgeving (Rli) | https://www.rli.nl/rss.xml | {}
+rss | RIVM (Gezondheid & Milieu) | https://www.rivm.nl/nieuws/rss.xml | {}
+rss | KWR Water Research | https://www.kwrwater.nl/feed/ | {}
+rss | NIPV (Publieke Veiligheid / Natuurbranden) | https://nipv.nl/feed/ | {}
+rss | Unie van Waterschappen | https://unievanwaterschappen.nl/feed/ | {}
+rss | Waterforum (Water nieuws) | https://www.waterforum.net/feed/ | {}
+rss | Nature Today (Biodiversiteit) | https://www.naturetoday.com/intl/nl/observations/rss | {}
+rss | Natuurmonumenten | https://www.natuurmonumenten.nl/rss.xml | {}
+rss | Greenpeace Nederland | https://www.greenpeace.org/nl/feed/ | {}
+
+# =============================================================================
+# ADDITIONAL RSS SOURCES (NEW)
+# =============================================================================
+rss | IPLO - Nieuws | https://iplo.nl/nieuws/?rss=true | {}
+rss | IPLO - Water | https://iplo.nl/thema/water/nieuws-water/?rss=true | {}
+rss | IPLO - Bodem | https://iplo.nl/thema/bodem/nieuws-bodem/?rss=true | {}
+rss | KNMI - Nieuwsberichten | https://www.knmi.nl/rssfeeds/rss_KNMInieuwsberichten | {}
+rss | KNMI - Klimaatberichten | https://www.knmi.nl/rssfeeds/rss_KNMIklimaatberichten | {}
+rss | DNB - RSS (manual) | https://www.dnb.nl/nl/rss/16451/6882/23 | {}
+rss | CLO - Klimaatverandering indicatoren | https://www.clo.nl/feed/topic/40/indicator_version/rss.xml | {}
+rss | CLO - Water indicatoren | https://www.clo.nl/feed/topic/112/indicator_version/rss.xml | {}
+rss | STOWA - RSS | https://www.stowa.nl/rss.xml | {}
+rss | GGD GHOR - RSS | https://ggdghor.nl/feed/ | {}
+rss | Netbeheer Nederland - RSS | https://www.netbeheernederland.nl/rss.xml | {}
+rss | ACM - Nieuws/Publicaties RSS | https://www.acm.nl/nl/nieuws/rss/publicaties | {}
+rss | VNO-NCW - Nieuws | https://www.vno-ncw.nl/rss/nieuws-vno-ncw | {}
+rss | VNG - Nieuws | https://vng.nl/rss/nieuws.xml | {}
+rss | VNG - Publicaties | https://vng.nl/rss/publicaties.xml | {}
+rss | EEA - Press Releases | https://www.eea.europa.eu/en/newsroom/rss-feeds/eeas-press-releases-rss/rss.xml | {}
+
+# =============================================================================
+# SITEMAP SOURCES (NO ACTIVE RSS / RSS REJECTED)
+# =============================================================================
+sitemap | Deltaprogramma | https://www.deltaprogramma.nl/sitemap.xml | {"include_prefixes":["https://www.deltaprogramma.nl/actueel/"],"max_urls":120}
+sitemap | College van Rijksadviseurs (CRa) | https://www.collegevanrijksadviseurs.nl/sitemap.xml | {"include_prefixes":["https://www.collegevanrijksadviseurs.nl/actueel/"],"max_urls":120}
+sitemap | Deltares - Nieuws | https://www.deltares.nl/sitemap.xml | {"include_prefixes":["https://www.deltares.nl/nieuws"],"max_urls":120}
+sitemap | VNCI - Nieuws | https://www.vnci.nl/sitemap.xml | {"include_prefixes":["https://www.vnci.nl/nieuws"],"max_urls":120}
+sitemap | FNV - Persberichten | https://www.fnv.nl/sitemap.xml | {"include_prefixes":["https://www.fnv.nl/over-de-fnv/wie-we-zijn/perskamer/persberichten"],"max_urls":120}
+sitemap | TNO - Newsroom | https://www.tno.nl/nl/sitemap.xml | {"include_prefixes":["https://www.tno.nl/nl/newsroom/","https://www.tno.nl/nl/newsroom/nieuws/"],"max_urls":120}
+
+# =============================================================================
+# LISTING SOURCES (NO RSS/SITEMAP AVAILABLE OR CHOSEN)
+# =============================================================================
+listing | RIONED - Nieuws | https://www.riool.net/nieuws | {"selector_key":"rioned_nieuws","max_pages":2,"max_candidates":60}
+listing | RIONED - Nieuwsbrief Archief | https://www.riool.net/over-rioned/rionednieuws | {"selector_key":"rioned_archief","max_pages":2,"max_candidates":60}
+listing | CROW - Actueel | https://www.crow.nl/actueel/ | {"selector_key":"crow_actueel","max_pages":2,"max_candidates":60}
+sitemap | Klimaatadaptatie NL | https://klimaatadaptatienederland.nl/sitemap.xml | {"include_prefixes":["https://klimaatadaptatienederland.nl/actueel/actueel/nieuws/"],"max_urls":300,"max_candidates":200}
+listing | Verbond van Verzekeraars - Actueel | https://www.verzekeraars.nl/publicaties/actueel | {"selector_key":"verzekeraars_actueel","max_pages":2,"max_candidates":60}
+listing | Veiligheidsberaad - Nieuws | https://www.veiligheidsberaad.nl/nieuws/ | {"selector_key":"veiligheidsberaad_nieuws","max_pages":2,"max_candidates":60}
+listing | Veiligheidsberaad - Thema Klimaatveiligheid | https://www.veiligheidsberaad.nl/thema-klimaatveiligheid-2/ | {"selector_key":"veiligheidsberaad_klimaat","max_pages":2,"max_candidates":60}
+listing | Veiligheidsberaad - Klimaat en Veiligheid | https://www.veiligheidsberaad.nl/klimaat-en-veiligheid/ | {"selector_key":"veiligheidsberaad_klimaat","max_pages":2,"max_candidates":60}
+listing | Climate-ADAPT - Latest News and Events | https://climate-adapt.eea.europa.eu/latest-news-events-on-climate-adapt | {"selector_key":"climate_adapt_listing","max_pages":2,"max_candidates":60}
+listing | Climate-ADAPT - Latest Modifications | https://climate-adapt.eea.europa.eu/latest-modifications-on-climate-adapt | {"selector_key":"climate_adapt_listing","max_pages":2,"max_candidates":60}

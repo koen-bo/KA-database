@@ -170,21 +170,21 @@ def test_database():
         print(f"\nTotal documents in database: {count}")
 
 
-def test_feeds_config():
-    """Test RSS feeds configuration loading."""
+def test_sources_config():
+    """Test multi-source configuration loading."""
     print("\n" + "=" * 70)
-    print("TESTING FEEDS CONFIGURATION")
+    print("TESTING SOURCES CONFIGURATION")
     print("=" * 70)
     
-    feeds = config.load_feeds()
-    print(f"\nLoaded {len(feeds)} RSS feeds from feeds.txt:")
+    sources = config.load_sources()
+    print(f"\nLoaded {len(sources)} sources from sources.txt (or feeds fallback):")
     
-    for i, feed in enumerate(feeds[:5], 1):
-        print(f"  {i}. [{feed['source_name']}]")
-        print(f"     {feed['url'][:60]}...")
+    for i, source in enumerate(sources[:5], 1):
+        print(f"  {i}. [{source['method']}] {source['source_name']}")
+        print(f"     {source['url'][:60]}...")
     
-    if len(feeds) > 5:
-        print(f"  ... and {len(feeds) - 5} more")
+    if len(sources) > 5:
+        print(f"  ... and {len(sources) - 5} more")
 
 
 def main():
@@ -194,7 +194,7 @@ def main():
     print("#" * 70)
     
     test_tiered_filter()
-    test_feeds_config()
+    test_sources_config()
     test_database()
     # test_fetcher()  # Uncomment to test with real HTTP request
     
