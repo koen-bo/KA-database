@@ -12,6 +12,7 @@ Run with: streamlit run dashboard.py
 """
 
 import json
+import hmac
 import os
 import subprocess
 from datetime import datetime, timedelta
@@ -72,6 +73,65 @@ st.markdown("""
 .badge-pdf { background: #cce5ff; color: #004085; }
 </style>
 """, unsafe_allow_html=True)
+
+
+def get_auth_config() -> tuple[str | None, str | None]:
+    """Load dashboard login credentials from environment variables."""
+    username = os.getenv("KA_DASHBOARD_USERNAME")
+    password = os.getenv("KA_DASHBOARD_PASSWORD")
+    return username, password
+
+
+def auth_config_valid() -> bool:
+    """Return True when both required auth environment variables are set."""
+    username, password = get_auth_config()
+    return bool(username and password)
+
+
+def check_credentials(input_username: str, input_password: str) -> bool:
+    """Compare provided credentials against configured values."""
+    configured_username, configured_password = get_auth_config()
+    if not configured_username or not configured_password:
+        return False
+    return (
+        hmac.compare_digest(input_username, configured_username)
+        and hmac.compare_digest(input_password, configured_password)
+    )
+
+
+def ensure_auth_state_initialized() -> None:
+    """Initialize auth-related session state fields."""
+    if "authenticated" not in st.session_state:
+        st.session_state.authenticated = False
+    if "auth_username" not in st.session_state:
+        st.session_state.auth_username = ""
+
+
+def render_login_screen() -> None:
+    """Render the login form and authenticate the user."""
+    st.title("Inloggen")
+    st.write("Voer je gebruikersnaam en wachtwoord in om toegang te krijgen.")
+
+    with st.form("login_form", clear_on_submit=False):
+        username = st.text_input("Gebruikersnaam")
+        password = st.text_input("Wachtwoord", type="password")
+        submitted = st.form_submit_button("Inloggen", type="primary")
+
+    if submitted:
+        if check_credentials(username, password):
+            st.session_state.authenticated = True
+            st.session_state.auth_username = username
+            st.rerun()
+        else:
+            st.error("Onjuiste gebruikersnaam of wachtwoord.")
+
+
+def render_logout_control() -> None:
+    """Render logout control in sidebar for authenticated users."""
+    if st.sidebar.button("Uitloggen"):
+        st.session_state.authenticated = False
+        st.session_state.auth_username = ""
+        st.rerun()
 
 
 def get_unique_sources() -> list[str]:
@@ -565,9 +625,26 @@ def render_document_detail(doc_id: int):
 
 
 # =============================================================================
+# AUTHENTICATION GATE
+# =============================================================================
+ensure_auth_state_initialized()
+
+if not auth_config_valid():
+    st.error(
+        "Loginconfiguratie ontbreekt. Stel de omgevingsvariabelen "
+        "`KA_DASHBOARD_USERNAME` en `KA_DASHBOARD_PASSWORD` in."
+    )
+    st.stop()
+
+if not st.session_state.authenticated:
+    render_login_screen()
+    st.stop()
+
+# =============================================================================
 # SIDEBAR NAVIGATION
 # =============================================================================
 st.sidebar.title("🌍 Klimaatadaptatie KB")
+render_logout_control()
 page = st.sidebar.radio(
     "Navigatie",
     ["📚 Documenten", "🔤 Zoektermen", "📡 RSS Feeds", "💬 Prompt Manager", "▶️ Pipeline"]

@@ -7,6 +7,12 @@ pip install -r requirements.txt
 # 2. Start the dashboard
 streamlit run dashboard.py
 
+# 2a. Start dashboard with required login credentials (PowerShell)
+$env:KA_DASHBOARD_USERNAME="admin"; $env:KA_DASHBOARD_PASSWORD="change-me"; streamlit run dashboard.py
+
+# 2b. Start dashboard with required login credentials (CMD)
+set KA_DASHBOARD_USERNAME=admin && set KA_DASHBOARD_PASSWORD=change-me && streamlit run dashboard.py
+
 # ----------------------------------------
 # One-liner (install deps + start dashboard)
 pip install -r requirements.txt && streamlit run dashboard.py

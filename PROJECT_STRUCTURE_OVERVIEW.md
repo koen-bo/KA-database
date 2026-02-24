@@ -86,6 +86,12 @@ KA-database/
 - Dashboard: `streamlit run dashboard.py`
 - PDF backfill: `python refetch_pdfs.py`
 
+## Dashboard Authentication
+- The dashboard requires login credentials from environment variables:
+  - `KA_DASHBOARD_USERNAME`
+  - `KA_DASHBOARD_PASSWORD`
+- If either variable is missing, dashboard access is blocked (fail closed).
+
 ## Architecture Diagram
 ```mermaid
 flowchart TD
