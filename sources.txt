@@ -62,6 +62,7 @@ rss | EEA - Press Releases | https://www.eea.europa.eu/en/newsroom/rss-feeds/eea
 sitemap | Deltaprogramma | https://www.deltaprogramma.nl/sitemap.xml | {"include_prefixes":["https://www.deltaprogramma.nl/actueel/"],"max_urls":120}
 sitemap | College van Rijksadviseurs (CRa) | https://www.collegevanrijksadviseurs.nl/sitemap.xml | {"include_prefixes":["https://www.collegevanrijksadviseurs.nl/actueel/"],"max_urls":120}
 sitemap | Deltares - Nieuws | https://www.deltares.nl/sitemap.xml | {"include_prefixes":["https://www.deltares.nl/nieuws"],"max_urls":120}
+sitemap | Copernicus Institute (UU) - News | https://www.uu.nl/sitemap.xml | {"include_prefixes":["https://www.uu.nl/en/research/copernicus-institute-of-sustainable-development/"],"max_urls":300,"max_candidates":200,"max_scan_urls":50000}
 sitemap | VNCI - Nieuws | https://www.vnci.nl/sitemap.xml | {"include_prefixes":["https://www.vnci.nl/nieuws"],"max_urls":120}
 sitemap | FNV - Persberichten | https://www.fnv.nl/sitemap.xml | {"include_prefixes":["https://www.fnv.nl/over-de-fnv/wie-we-zijn/perskamer/persberichten"],"max_urls":120}
 sitemap | TNO - Newsroom | https://www.tno.nl/nl/sitemap.xml | {"include_prefixes":["https://www.tno.nl/nl/newsroom/","https://www.tno.nl/nl/newsroom/nieuws/"],"max_urls":120}
@@ -77,5 +78,4 @@ listing | Verbond van Verzekeraars - Actueel | https://www.verzekeraars.nl/publi
 listing | Veiligheidsberaad - Nieuws | https://www.veiligheidsberaad.nl/nieuws/ | {"selector_key":"veiligheidsberaad_nieuws","max_pages":2,"max_candidates":60}
 listing | Veiligheidsberaad - Thema Klimaatveiligheid | https://www.veiligheidsberaad.nl/thema-klimaatveiligheid-2/ | {"selector_key":"veiligheidsberaad_klimaat","max_pages":2,"max_candidates":60}
 listing | Veiligheidsberaad - Klimaat en Veiligheid | https://www.veiligheidsberaad.nl/klimaat-en-veiligheid/ | {"selector_key":"veiligheidsberaad_klimaat","max_pages":2,"max_candidates":60}
-listing | Climate-ADAPT - Latest News and Events | https://climate-adapt.eea.europa.eu/latest-news-events-on-climate-adapt | {"selector_key":"climate_adapt_listing","max_pages":2,"max_candidates":60}
-listing | Climate-ADAPT - Latest Modifications | https://climate-adapt.eea.europa.eu/latest-modifications-on-climate-adapt | {"selector_key":"climate_adapt_listing","max_pages":2,"max_candidates":60}
+listing | Climate-ADAPT - News Archive | https://climate-adapt.eea.europa.eu/en/news-archive | {"selector_key":"climate_adapt_listing","max_pages":2,"max_candidates":60}

@@ -1,0 +1,45 @@
+# Optional English Tier 2 Keywords - Context Dependent
+# ----------------------------------------------------
+# These keywords are context-dependent and typically require context words
+# from context_words_en.txt (or multi-theme co-occurrence) to pass Tier 2.
+
+[Water]
+heavy rainfall
+extreme rainfall
+pluvial flooding
+surface water flooding
+flash flooding
+flooding
+water scarcity
+freshwater availability
+drainage capacity
+stormwater retention
+water retention
+
+[Landbouw_Natuur]
+soil subsidence
+land subsidence
+drought stress
+salinization
+crop damage
+wildfire risk
+peatlands
+groundwater depletion
+
+[Wonen_Werken_Infra]
+foundation damage
+critical infrastructure
+infrastructure failure
+urban heat
+cooling demand
+green roofs
+blue-green infrastructure
+
+[Gezondheid_Maatschappij]
+heat action plan
+tropical nights
+vulnerable groups
+health impacts
+vector-borne diseases
+climate justice
+social resilience

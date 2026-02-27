@@ -21,8 +21,11 @@ pip install -r requirements.txt && streamlit run dashboard.py
 # Run the pipeline manually (fetch new documents)
 python main.py
 
-# Run pipeline in test mode (dry run)
-python main.py --test
-
 # Re-fetch missing PDFs for existing documents
 python refetch_pdfs.py
+
+# Backfill keyword tags for existing documents
+python backfill_tags.py --dry-run
+python backfill_tags.py --only-missing
+python backfill_tags.py --limit 500
+python backfill_tags.py --since-id 10000

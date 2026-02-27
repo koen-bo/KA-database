@@ -135,11 +135,11 @@
     "next_page_selector": "a[rel='next'], a.next, .next a"
   },
   "climate_adapt_listing": {
-    "item_selector": "article, .tileItem, .news-item, li",
-    "link_selector": "a[href]",
-    "title_selector": "h2 a, h3 a, .title a, .tileHeadline a",
-    "date_selector": "time, .date, .tileDate",
-    "summary_selector": ".summary, .intro, .description, p",
+    "item_selector": "div.u-item.listing-item, div.wrapper.left-image",
+    "link_selector": ".listing-body a[href], a[href]",
+    "title_selector": "h3.listing-header, h3 a, h3, .title a",
+    "date_selector": "p.listing-date, .listing-date, time, .date, .tileDate",
+    "summary_selector": "p.listing-description, .listing-description, .summary, .intro, .description, p",
     "pagination_selector": ".pagination, nav.pagination, .pager",
     "next_page_selector": "a[rel='next'], a.next, .next a"
   }

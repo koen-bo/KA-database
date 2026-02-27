@@ -6,6 +6,7 @@ relevance, downloads content, and stores in database.
 """
 
 from datetime import datetime, timedelta
+import json
 import os
 from typing import Optional
 
@@ -18,7 +19,7 @@ from modules.discovery_listing import discover_listing_candidates
 from modules.discovery_rss import Candidate, discover_rss_candidates
 from modules.discovery_sitemap import discover_sitemap_candidates
 from modules.fetcher import ContentFetcher
-from modules.filter import check_relevance, format_filter_result
+from modules.filter import check_relevance, extract_keyword_tags, format_filter_result
 
 
 class MultiSourceIngester:
@@ -43,6 +44,7 @@ class MultiSourceIngester:
             "entries_fetched": 0,
             "entries_failed": 0,
             "entries_stored": 0,
+            "entries_tagged": 0,
         }
 
     def run(self) -> dict:
@@ -156,6 +158,8 @@ class MultiSourceIngester:
 
         self.stats["entries_fetched"] += 1
         pub_date = publication_date
+        tag_text = f"{title} {description} {result.get('text', '')}"
+        keyword_tags = extract_keyword_tags(tag_text)
 
         try:
             doc = add_document(
@@ -169,9 +173,13 @@ class MultiSourceIngester:
                 processing_status="new",
                 discovery_method=candidate.get("discovery_method"),
                 discovery_source_url=candidate.get("discovery_source_url"),
+                keyword_tags=json.dumps(keyword_tags, ensure_ascii=False),
             )
             self.stats["entries_stored"] += 1
+            if keyword_tags:
+                self.stats["entries_tagged"] += 1
             print(f"       [STORED] ID: {doc.id}, {result['type']}, {len(result['text'])} chars")
+            print(f"       [TAGS] {len(keyword_tags)} keyword tags")
             if result["file_path"]:
                 print(f"       [PDF] Saved: {result['file_path']}")
         except Exception as e:
@@ -331,6 +339,7 @@ class MultiSourceIngester:
     Already in DB:          {self.stats['entries_skipped_existing']}
     Fetched:                {self.stats['entries_fetched']}
     Failed:                 {self.stats['entries_failed']}
+    Tagged:                 {self.stats['entries_tagged']}
     -----------------------
     NEW documents stored:   {self.stats['entries_stored']}
 """

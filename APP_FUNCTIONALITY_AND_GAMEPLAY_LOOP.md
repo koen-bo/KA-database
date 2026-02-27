@@ -1,9 +1,9 @@
-# App Functionality and Gameplay Loop
+﻿# App Functionality and Gameplay Loop
 
 ## Functional Overview (Current State)
 The app operates as a document intelligence workflow with automated ingestion and manual AI analysis completion:
 - Automated ingestion: sources are discovered via `rss`, `sitemap`, and `listing` methods, entries are filtered by tiered relevance rules, content is fetched/extracted, and new documents are stored in SQLite.
-- Operator UI (Streamlit): users browse and filter documents, inspect full text and PDFs, edit keywords/prompts, inspect source config, and trigger ingestion/refetch jobs.
+- Operator UI (Streamlit): users browse and filter documents (including keyword tags), inspect full text and PDFs, edit keywords/prompts, inspect source config, and trigger ingestion/refetch/backfill jobs.
 - Human-in-the-loop AI: the dashboard generates prompts from document text, an operator runs an external AI tool manually, then pastes summary/JSON results back into the app.
 
 ## Core Functional Areas
@@ -18,19 +18,23 @@ The app operates as a document intelligence workflow with automated ingestion an
   - `sitemap` -> `modules/discovery_sitemap.py`
   - `listing` -> `modules/discovery_listing.py`
 - Storage: only new URLs are inserted (`url_exists` dedupe in `modules/database.py`).
-- Database metadata now tracks discovery origin:
+- Database metadata tracks discovery origin:
   - `discovery_method`
   - `discovery_source_url`
 
-### 2. Relevance System
-- Implemented in `modules/filter.py`.
+### 2. Relevance and Keyword Tagging
+- Relevance filtering is implemented in `modules/filter.py`.
 - Tier 1:
   - direct-hit keywords from `tier1_keywords.txt` (+ optional `tier1_keywords_en.txt`)
-  - any match => relevant.
+  - any match -> relevant.
 - Tier 2:
   - themed keywords from `tier2_keywords.txt`
   - requires context words from `context_words.txt` (+ optional `context_words_en.txt`), or multi-theme co-occurrence.
 - For sitemap/listing candidates, relevance text is enriched with page metadata (`<title>`, meta description) before filtering when discovery text is weak.
+- Keyword tags:
+  - all matched Tier 1 + Tier 2 keywords are stored in `documents.keyword_tags` (JSON array)
+  - context words are never stored as tags
+  - ingestion extracts tags from `title + discovery summary + fetched text`.
 
 ### 3. Freshness and Incremental Discovery (Sitemap/Listing)
 - Sitemap/listing sources apply an effective minimum publication date during discovery:
@@ -50,26 +54,33 @@ The app operates as a document intelligence workflow with automated ingestion an
   - parse with `BeautifulSoup`, strip clutter tags, extract main/body text.
 
 ### 5. Dashboard Operations
-- `dashboard.py` page `"📡 RSS Feeds"` now shows multi-source configuration (method + source + URL) loaded via `load_sources_with_status()`.
-- `"▶️ Pipeline"` now reflects total configured `Bronnen` (not only RSS feeds).
-- Existing document browsing, prompt handling, and manual AI workflow remain unchanged.
+- Document browser supports:
+  - free-text search (title/full text/source)
+  - source/status/PDF/date filters
+  - tag filter (`Tags`) with match mode (`Any`/`All`)
+  - active filter summary + reset (`Wis filters`).
+- Source management page shows multi-source configuration loaded via `load_sources_with_status()`.
+- Pipeline page can run ingestion and PDF refetch and display runtime metrics.
+- Prompt workflow remains manual human-in-the-loop for summary and task scoring.
 
-### 6. Pipeline and PDF Operations
-- `"▶️ Pipeline"` page can:
-  - run `python main.py`
-  - run `python refetch_pdfs.py`
-  - display runtime metrics (new/analyzed counts, PDFs, summaries, tasks).
+### 6. Backfill Operations
+- PDF backfill:
+  - `python refetch_pdfs.py`
+- Keyword-tag backfill:
+  - `python backfill_tags.py --dry-run`
+  - `python backfill_tags.py --only-missing`
+  - supports `--limit`, `--since-id`, `--batch-size` for controlled rollout.
 
 ## Gameplay Loop (Operator Loop)
 1. Configure sources, keywords, and prompts in config files/dashboard.
 2. Run ingestion via pipeline page (or external `python main.py`).
-3. Open document browser and filter to relevant/new documents.
+3. Open document browser and filter to relevant/new documents (including tag filtering when useful).
 4. Open a specific document detail page.
 5. Generate summary/task prompts from `full_text`.
 6. Run external AI tool manually with copied prompt text.
 7. Paste generated summary and tasks JSON into dashboard fields.
 8. Save outputs to DB; once both summary and task JSON exist, status becomes `analyzed`.
-9. Repeat for remaining documents; optionally run PDF refetch for items without local PDFs.
+9. Repeat for remaining documents; optionally run backfill jobs.
 
 ## State Model
 - `new`
@@ -101,9 +112,9 @@ The app operates as a document intelligence workflow with automated ingestion an
 ## Important Interfaces / Public Contracts
 - CLI/runtime commands:
   - `python main.py`
-  - `python main.py --test`
   - `streamlit run dashboard.py`
   - `python refetch_pdfs.py`
+  - `python backfill_tags.py --only-missing`
 - Environment/config controls:
   - `KA_DATA_DIR`
   - `KA_SOURCES_FILE` (preferred)
@@ -115,4 +126,4 @@ The app operates as a document intelligence workflow with automated ingestion an
   - `KA_MAX_LISTING_PAGES_PER_SOURCE`
   - `KA_MAX_ENTRIES_PER_FEED`
 - Database contract:
-  - `documents` table includes source metadata, discovery metadata, extracted content, and manual AI output fields.
+  - `documents` table includes source metadata, discovery metadata, extracted content, keyword tags (`keyword_tags`), and manual AI output fields.

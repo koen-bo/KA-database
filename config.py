@@ -4,7 +4,8 @@ Climate Adaptation Knowledge Base - Configuration
 All keyword lists and sources are loaded from separate text files for easy editing:
   - tier1_keywords.txt     : Direct hit keywords (always relevant, NL)
   - tier1_keywords_en.txt  : Optional direct hit keywords (EN)
-  - tier2_keywords.txt     : Context-dependent keywords (grouped by theme)
+  - tier2_keywords.txt     : Context-dependent keywords (grouped by theme, NL)
+  - tier2_keywords_en.txt  : Optional context-dependent keywords (grouped by theme, EN)
   - context_words.txt      : Context words (NL)
   - context_words_en.txt   : Optional context words (EN)
   - sources.txt            : Multi-method source URLs (rss/sitemap/listing)
@@ -28,6 +29,7 @@ PDF_STORAGE_PATH = os.path.join(DATA_DIR, "pdfs")
 TIER1_KEYWORDS_FILE = os.path.join(BASE_DIR, "tier1_keywords.txt")
 TIER1_KEYWORDS_EN_FILE = os.path.join(BASE_DIR, "tier1_keywords_en.txt")
 TIER2_KEYWORDS_FILE = os.path.join(BASE_DIR, "tier2_keywords.txt")
+TIER2_KEYWORDS_EN_FILE = os.path.join(BASE_DIR, "tier2_keywords_en.txt")
 CONTEXT_WORDS_FILE = os.path.join(BASE_DIR, "context_words.txt")
 CONTEXT_WORDS_EN_FILE = os.path.join(BASE_DIR, "context_words_en.txt")
 
@@ -86,25 +88,32 @@ def load_tier2_themes() -> dict[str, list[str]]:
         Dict with theme names as keys and keyword lists as values
     """
     themes = {}
-    current_theme = None
 
-    try:
-        with open(TIER2_KEYWORDS_FILE, "r", encoding="utf-8") as f:
-            for line in f:
-                line = line.strip()
+    def _load_tier2_file(filepath: str) -> None:
+        current_theme = None
+        try:
+            with open(filepath, "r", encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
 
-                if not line or line.startswith("#"):
-                    continue
+                    if not line or line.startswith("#"):
+                        continue
 
-                if line.startswith("[") and line.endswith("]"):
-                    current_theme = line[1:-1]
-                    themes[current_theme] = []
-                elif current_theme:
-                    themes[current_theme].append(line.lower())
+                    if line.startswith("[") and line.endswith("]"):
+                        current_theme = line[1:-1]
+                        if current_theme not in themes:
+                            themes[current_theme] = []
+                    elif current_theme:
+                        keyword = line.lower()
+                        if keyword not in themes[current_theme]:
+                            themes[current_theme].append(keyword)
+        except FileNotFoundError:
+            # English Tier 2 file is optional; NL file should normally exist.
+            if filepath == TIER2_KEYWORDS_FILE:
+                print(f"Warning: Tier 2 keywords file not found: {filepath}")
 
-    except FileNotFoundError:
-        print(f"Warning: Tier 2 keywords file not found: {TIER2_KEYWORDS_FILE}")
-
+    _load_tier2_file(TIER2_KEYWORDS_FILE)
+    _load_tier2_file(TIER2_KEYWORDS_EN_FILE)
     return themes
 
 

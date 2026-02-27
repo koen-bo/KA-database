@@ -6,7 +6,6 @@ Can be run locally or via GitHub Actions.
 
 Usage:
     python main.py           # Run full ingestion pipeline
-    python main.py --test    # Run tests only (no ingestion)
 """
 
 import sys
@@ -103,13 +102,6 @@ class IngestionLock:
 
 def main():
     """Run the Climate Monitor pipeline."""
-    
-    # Check for test mode
-    if "--test" in sys.argv:
-        print("Running in test mode...")
-        from test_pipeline import main as run_tests
-        run_tests()
-        return
     
     # Run the full ingestion pipeline
     print("\n" + "#" * 60)

@@ -141,11 +141,43 @@ def get_unique_sources() -> list[str]:
         return sorted([s[0] for s in sources if s[0]])
 
 
+def parse_keyword_tags(raw: str | None) -> list[str]:
+    """Parse keyword tag JSON into a normalized list."""
+    if not raw:
+        return []
+    try:
+        data = json.loads(raw)
+    except Exception:
+        return []
+    if not isinstance(data, list):
+        return []
+    tags: list[str] = []
+    for item in data:
+        if isinstance(item, str):
+            cleaned = item.strip().lower()
+            if cleaned:
+                tags.append(cleaned)
+    return sorted(set(tags))
+
+
+@st.cache_data(ttl=60)
+def get_unique_keyword_tags() -> list[str]:
+    """Get all distinct keyword tags currently present in the database."""
+    all_tags: set[str] = set()
+    with get_session() as session:
+        rows = session.query(Document.keyword_tags).filter(Document.keyword_tags != None).all()
+        for (raw_tags,) in rows:
+            all_tags.update(parse_keyword_tags(raw_tags))
+    return sorted(all_tags)
+
+
 def load_documents_filtered(
     search_query: str = "",
     sources: list[str] = None,
     status_filter: str = "Alle",
     has_pdf_filter: str = "Alle",
+    selected_tags: list[str] = None,
+    tags_match_mode: str = "any",
     date_from: datetime = None,
     date_to: datetime = None,
     limit: int = 500
@@ -189,10 +221,11 @@ def load_documents_filtered(
         # Sort by publication_date descending, with nulls last
         docs = query.order_by(
             Document.publication_date.desc().nullslast()
-        ).limit(limit).all()
-        
+        ).all()
+
         data = []
         for doc in docs:
+            doc_tags = parse_keyword_tags(doc.keyword_tags)
             data.append({
                 "id": doc.id,
                 "title": doc.title,
@@ -204,10 +237,26 @@ def load_documents_filtered(
                 "local_file_path": doc.local_file_path,
                 "url": doc.url,
                 "has_summary": bool(doc.ai_summary),
-                "has_tasks": bool(doc.ai_tasks_json)
+                "has_tasks": bool(doc.ai_tasks_json),
+                "keyword_tags": doc_tags,
             })
-        
-        return data
+
+        # Tags filter is applied after base DB filters.
+        if selected_tags:
+            selected_set = {t.strip().lower() for t in selected_tags if t and t.strip()}
+            if selected_set:
+                if tags_match_mode == "all":
+                    data = [
+                        d for d in data
+                        if selected_set.issubset(set(d["keyword_tags"]))
+                    ]
+                else:
+                    data = [
+                        d for d in data
+                        if set(d["keyword_tags"]).intersection(selected_set)
+                    ]
+
+        return data[:limit]
 
 
 def load_file_content(filepath: str) -> str:
@@ -675,56 +724,94 @@ if page == "📚 Documenten":
         # ==========================================================================
         with st.expander("🎛️ Filters", expanded=False):
             col_source, col_status, col_pdf = st.columns(3)
-            
+
             with col_source:
                 all_sources = get_unique_sources()
                 selected_sources = st.multiselect(
                     "📁 Bron",
                     options=all_sources,
                     default=[],
-                    placeholder="Alle bronnen"
+                    placeholder="Alle bronnen",
+                    key="filter_sources",
                 )
-            
+
             with col_status:
                 status_filter = st.radio(
                     "📊 Status",
                     ["Alle", "new", "analyzed"],
-                    horizontal=True
+                    horizontal=True,
+                    key="filter_status",
                 )
-            
+
             with col_pdf:
                 pdf_filter = st.radio(
                     "📄 PDF",
                     ["Alle", "Met PDF", "Zonder PDF"],
-                    horizontal=True
+                    horizontal=True,
+                    key="filter_pdf",
                 )
-            
-            # Date range
-            col_date1, col_date2, col_limit = st.columns(3)
+
+            # Date range + tags
+            col_date1, col_date2, col_tags = st.columns(3)
             with col_date1:
                 date_from = st.date_input(
                     "📅 Datum van",
                     value=None,
-                    format="DD-MM-YYYY"
+                    format="DD-MM-YYYY",
+                    key="filter_date_from",
                 )
             with col_date2:
                 date_to = st.date_input(
                     "📅 Datum tot",
                     value=None,
-                    format="DD-MM-YYYY"
+                    format="DD-MM-YYYY",
+                    key="filter_date_to",
                 )
-            with col_limit:
-                limit = st.selectbox("Max resultaten", [100, 200, 500, 1000], index=2)
+            with col_tags:
+                available_tags = get_unique_keyword_tags()
+                selected_tags = st.multiselect(
+                    "🏷️ Tags",
+                    options=available_tags,
+                    default=[],
+                    placeholder="Alle tags",
+                    key="filter_tags",
+                )
+                st.caption(f"{len(selected_tags)} tags geselecteerd")
+
+                if hasattr(st, "popover"):
+                    with st.popover("Meer filters"):
+                        tags_mode_label = st.radio(
+                            "Tag match",
+                            ["Any (Aanbevolen)", "All"],
+                            key="filter_tags_match_label",
+                        )
+                else:
+                    with st.expander("Meer filters", expanded=False):
+                        tags_mode_label = st.radio(
+                            "Tag match",
+                            ["Any (Aanbevolen)", "All"],
+                            key="filter_tags_match_label",
+                        )
+                tags_match_mode = "all" if tags_mode_label == "All" else "any"
         
         # ==========================================================================
         # VIEW SWITCHER
         # ==========================================================================
-        view_mode = st.radio(
-            "Weergave",
-            ["📋 Lijst", "🃏 Kaarten"],
-            horizontal=True,
-            label_visibility="collapsed"
-        )
+        col_view, col_limit = st.columns([6, 1])
+        with col_view:
+            view_mode = st.radio(
+                "Weergave",
+                ["📋 Lijst", "🃏 Kaarten"],
+                horizontal=True,
+                label_visibility="collapsed"
+            )
+        with col_limit:
+            limit = st.selectbox(
+                "Max resultaten",
+                [100, 200, 500, 1000],
+                index=2,
+                key="filter_limit",
+            )
         
         # Convert date inputs to datetime
         date_from_dt = datetime.combine(date_from, datetime.min.time()) if date_from else None
@@ -736,10 +823,49 @@ if page == "📚 Documenten":
             sources=selected_sources if selected_sources else None,
             status_filter=status_filter,
             has_pdf_filter=pdf_filter,
+            selected_tags=selected_tags if selected_tags else None,
+            tags_match_mode=tags_match_mode,
             date_from=date_from_dt,
             date_to=date_to_dt,
             limit=limit
         )
+
+        active_filters = []
+        if selected_sources:
+            if len(selected_sources) == 1:
+                active_filters.append(f"Bron: {selected_sources[0]}")
+            else:
+                active_filters.append(f"Bronnen: {selected_sources[0]} +{len(selected_sources) - 1}")
+        if status_filter != "Alle":
+            active_filters.append(f"Status: {status_filter}")
+        if pdf_filter != "Alle":
+            active_filters.append(f"PDF: {pdf_filter}")
+        if date_from:
+            active_filters.append(f"Van: {date_from.strftime('%d-%m-%Y')}")
+        if date_to:
+            active_filters.append(f"Tot: {date_to.strftime('%d-%m-%Y')}")
+        if selected_tags:
+            if len(selected_tags) == 1:
+                active_filters.append(f"Tags: {selected_tags[0]}")
+            else:
+                active_filters.append(f"Tags: {selected_tags[0]} +{len(selected_tags) - 1}")
+            active_filters.append(f"Tag match: {'All' if tags_match_mode == 'all' else 'Any'}")
+
+        if active_filters:
+            col_chips, col_reset = st.columns([6, 1])
+            with col_chips:
+                st.caption(" | ".join(active_filters))
+            with col_reset:
+                if st.button("Wis filters", use_container_width=True):
+                    st.session_state.filter_sources = []
+                    st.session_state.filter_status = "Alle"
+                    st.session_state.filter_pdf = "Alle"
+                    st.session_state.filter_date_from = None
+                    st.session_state.filter_date_to = None
+                    st.session_state.filter_tags = []
+                    st.session_state.filter_tags_match_label = "Any (Aanbevolen)"
+                    st.session_state.filter_limit = 500
+                    st.rerun()
         
         if not docs:
             st.info("Geen documenten gevonden. Pas de filters aan of voer de pipeline uit.")

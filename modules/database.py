@@ -47,6 +47,7 @@ class Document(Base):
     
     # Processing status
     processing_status: Mapped[str] = mapped_column(String(50), default="new")  # 'new', 'analyzed', 'failed'
+    keyword_tags: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # JSON array string
     
     # AI Analysis results
     is_relevant: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)
@@ -110,6 +111,8 @@ def _ensure_schema_columns() -> None:
             conn.execute(text("ALTER TABLE documents ADD COLUMN discovery_method TEXT;"))
         if "discovery_source_url" not in existing_columns:
             conn.execute(text("ALTER TABLE documents ADD COLUMN discovery_source_url TEXT;"))
+        if "keyword_tags" not in existing_columns:
+            conn.execute(text("ALTER TABLE documents ADD COLUMN keyword_tags TEXT;"))
 
 
 def url_exists(url: str) -> bool:
@@ -130,6 +133,7 @@ def add_document(
     processing_status: str = "new",
     discovery_method: Optional[str] = None,
     discovery_source_url: Optional[str] = None,
+    keyword_tags: Optional[str] = None,
 ) -> Document:
     """
     Add a new document to the database.
@@ -159,12 +163,52 @@ def add_document(
             content_type=content_type,
             local_file_path=local_file_path,
             full_text=full_text,
-            processing_status=processing_status
+            processing_status=processing_status,
+            keyword_tags=keyword_tags,
         )
         session.add(doc)
         session.commit()
         session.refresh(doc)
         return doc
+
+
+def update_document_tags(doc_id: int, keyword_tags_json: str) -> bool:
+    """Update keyword tags for a single document. Returns True when updated."""
+    with get_session() as session:
+        doc = session.query(Document).filter(Document.id == doc_id).first()
+        if not doc:
+            return False
+        doc.keyword_tags = keyword_tags_json
+        session.commit()
+        return True
+
+
+def iter_documents_for_tag_backfill(
+    since_id: int = 0,
+    limit: Optional[int] = None,
+    batch_size: int = 200,
+):
+    """
+    Yield documents in deterministic ID order for tag backfill.
+    """
+    emitted = 0
+    with get_session() as session:
+        query = (
+            session.query(Document)
+            .filter(Document.id > since_id)
+            .order_by(Document.id.asc())
+        )
+        if limit is not None and limit >= 0:
+            query = query.limit(limit)
+
+        if batch_size <= 0:
+            batch_size = 200
+
+        for doc in query.yield_per(batch_size):
+            yield doc
+            emitted += 1
+            if limit is not None and limit >= 0 and emitted >= limit:
+                break
 
 
 def get_documents_by_status(status: str) -> list[Document]:

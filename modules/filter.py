@@ -104,6 +104,33 @@ def check_relevance(title: str, description: str = "") -> FilterResult:
     )
 
 
+def extract_keyword_tags(text: str) -> list[str]:
+    """
+    Extract all Tier 1 and Tier 2 keywords present in text as tags.
+
+    Context words are explicitly excluded from tags.
+    """
+    if not text:
+        return []
+
+    text_lower = text.lower()
+    tier1_keywords = config.load_tier1_keywords()
+    tier2_keywords = config.get_tier2_keywords()
+    context_words = set(config.load_context_words())
+
+    matches = set()
+
+    for kw in tier1_keywords:
+        if kw and kw in text_lower and kw not in context_words:
+            matches.add(kw)
+
+    for kw in tier2_keywords:
+        if kw and kw in text_lower and kw not in context_words:
+            matches.add(kw)
+
+    return sorted(matches)
+
+
 def is_relevant(title: str, description: str = "") -> bool:
     """
     Simple boolean check for relevance.
