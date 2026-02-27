@@ -177,7 +177,7 @@ def load_documents_filtered(
     status_filter: str = "Alle",
     has_pdf_filter: str = "Alle",
     selected_tags: list[str] = None,
-    tags_match_mode: str = "any",
+    tags_match_mode: str = "all",
     date_from: datetime = None,
     date_to: datetime = None,
     limit: int = 500
@@ -722,6 +722,9 @@ if page == "📚 Documenten":
         # ==========================================================================
         # FILTER CONTROLS
         # ==========================================================================
+        if st.session_state.get("filter_tags_match_label") == "Any (Aanbevolen)":
+            st.session_state.filter_tags_match_label = "Any"
+
         with st.expander("🎛️ Filters", expanded=False):
             col_source, col_status, col_pdf = st.columns(3)
 
@@ -782,17 +785,17 @@ if page == "📚 Documenten":
                     with st.popover("Meer filters"):
                         tags_mode_label = st.radio(
                             "Tag match",
-                            ["Any (Aanbevolen)", "All"],
+                            ["All (Aanbevolen)", "Any"],
                             key="filter_tags_match_label",
                         )
                 else:
                     with st.expander("Meer filters", expanded=False):
                         tags_mode_label = st.radio(
                             "Tag match",
-                            ["Any (Aanbevolen)", "All"],
+                            ["All (Aanbevolen)", "Any"],
                             key="filter_tags_match_label",
                         )
-                tags_match_mode = "all" if tags_mode_label == "All" else "any"
+                tags_match_mode = "any" if tags_mode_label == "Any" else "all"
         
         # ==========================================================================
         # VIEW SWITCHER
@@ -863,7 +866,7 @@ if page == "📚 Documenten":
                     st.session_state.filter_date_from = None
                     st.session_state.filter_date_to = None
                     st.session_state.filter_tags = []
-                    st.session_state.filter_tags_match_label = "Any (Aanbevolen)"
+                    st.session_state.filter_tags_match_label = "All (Aanbevolen)"
                     st.session_state.filter_limit = 500
                     st.rerun()
         
