@@ -49,6 +49,8 @@ def refetch_documents_with_pdfs(limit: int = None):
                 # Update document with PDF info
                 doc.content_type = result["type"]
                 doc.local_file_path = result["file_path"]
+                if result.get("thumbnail_url"):
+                    doc.thumbnail_url = result["thumbnail_url"]
                 doc.full_text = result["text"]
                 session.commit()
                 

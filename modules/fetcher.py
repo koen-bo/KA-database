@@ -10,7 +10,7 @@ import os
 import re
 from datetime import datetime
 from typing import Optional, TypedDict
-from urllib.parse import urlparse
+from urllib.parse import urljoin, urlparse
 
 import requests
 from bs4 import BeautifulSoup
@@ -24,6 +24,7 @@ class FetchResult(TypedDict):
     text: str
     type: str  # 'pdf' or 'html'
     file_path: Optional[str]  # Local path for PDFs, None for HTML
+    thumbnail_url: Optional[str]  # Thumbnail URL for HTML articles when available
 
 
 class ContentFetcher:
@@ -142,7 +143,8 @@ class ContentFetcher:
             return {
                 "text": full_text,
                 "type": "pdf",
-                "file_path": file_path
+                "file_path": file_path,
+                "thumbnail_url": None,
             }
             
         except Exception as e:
@@ -175,7 +177,7 @@ class ContentFetcher:
             FetchResult with HTML text, and when available, appended PDF text
             plus optional PDF file_path
         """
-        html_result = self._process_html(html_content)
+        html_result = self._process_html(html_content, page_url=url)
         if not html_result:
             return None
 
@@ -198,6 +200,7 @@ class ContentFetcher:
                         "text": merged_text,
                         "type": "html",
                         "file_path": pdf_result["file_path"],
+                        "thumbnail_url": html_result.get("thumbnail_url"),
                     }
 
             return html_result
@@ -491,7 +494,7 @@ class ContentFetcher:
             print(f"[Fetcher] Error downloading PDF: {e}")
             return None
     
-    def _process_html(self, html_content: str) -> Optional[FetchResult]:
+    def _process_html(self, html_content: str, page_url: str = "") -> Optional[FetchResult]:
         """
         Process HTML content: remove clutter and extract main text.
         
@@ -532,12 +535,48 @@ class ContentFetcher:
             return {
                 "text": text.strip(),
                 "type": "html",
-                "file_path": None
+                "file_path": None,
+                "thumbnail_url": self._extract_thumbnail_url_from_soup(soup, page_url),
             }
             
         except Exception as e:
             print(f"[Fetcher] Error processing HTML: {e}")
             return None
+
+    def _extract_thumbnail_url_from_soup(self, soup: BeautifulSoup, page_url: str) -> Optional[str]:
+        """Extract best candidate thumbnail URL from HTML soup."""
+        def meta_value(attr_name: str, value: str) -> str:
+            node = soup.find("meta", attrs={attr_name: value})
+            if node and node.get("content"):
+                return str(node.get("content", "")).strip()
+            return ""
+
+        for attr_name, value in (
+            ("property", "og:image"),
+            ("name", "twitter:image"),
+            ("property", "og:image:url"),
+        ):
+            candidate = meta_value(attr_name, value)
+            if candidate:
+                return urljoin(page_url, candidate) if page_url else candidate
+
+        root = soup.select_one("article") or soup.select_one("main") or soup.body or soup
+        for img in root.find_all("img", src=True):
+            src = str(img.get("src", "")).strip()
+            if not src:
+                continue
+            width = int(img.get("width") or 0)
+            height = int(img.get("height") or 0)
+            if width and width < 120:
+                continue
+            if height and height < 80:
+                continue
+            src_lower = src.lower()
+            if any(skip in src_lower for skip in ("logo", "icon", "avatar", "sprite")):
+                continue
+            return urljoin(page_url, src) if page_url else src
+
+        return None
 
     def _merge_article_and_pdf_text(self, article_text: str, pdf_text: str) -> str:
         """

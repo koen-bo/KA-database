@@ -41,6 +41,7 @@ class Document(Base):
     fetched_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     content_type: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)  # 'pdf' or 'html'
     local_file_path: Mapped[Optional[str]] = mapped_column(String(1024), nullable=True)  # Path to stored PDF
+    thumbnail_url: Mapped[Optional[str]] = mapped_column(String(2048), nullable=True)
     
     # Content
     full_text: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
@@ -113,6 +114,8 @@ def _ensure_schema_columns() -> None:
             conn.execute(text("ALTER TABLE documents ADD COLUMN discovery_source_url TEXT;"))
         if "keyword_tags" not in existing_columns:
             conn.execute(text("ALTER TABLE documents ADD COLUMN keyword_tags TEXT;"))
+        if "thumbnail_url" not in existing_columns:
+            conn.execute(text("ALTER TABLE documents ADD COLUMN thumbnail_url TEXT;"))
 
 
 def url_exists(url: str) -> bool:
@@ -129,6 +132,7 @@ def add_document(
     publication_date: Optional[datetime] = None,
     content_type: Optional[str] = None,
     local_file_path: Optional[str] = None,
+    thumbnail_url: Optional[str] = None,
     full_text: Optional[str] = None,
     processing_status: str = "new",
     discovery_method: Optional[str] = None,
@@ -162,6 +166,7 @@ def add_document(
             fetched_at=datetime.now(),
             content_type=content_type,
             local_file_path=local_file_path,
+            thumbnail_url=thumbnail_url,
             full_text=full_text,
             processing_status=processing_status,
             keyword_tags=keyword_tags,

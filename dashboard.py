@@ -20,13 +20,10 @@ import subprocess
 import textwrap
 from base64 import b64encode
 from datetime import datetime, timedelta
-from urllib.parse import urljoin
 
 import pandas as pd
-import requests
 import streamlit as st
 from sqlalchemy import or_, func
-from bs4 import BeautifulSoup
 
 from modules.database import get_session, Document, init_db
 from modules.fetcher import ContentFetcher
@@ -338,59 +335,6 @@ def get_placeholder_image_data_uri() -> str:
     return f"data:image/svg+xml;base64,{encoded}"
 
 
-@st.cache_data(ttl=86400, show_spinner=False)
-def get_article_thumbnail_url(url: str) -> str:
-    """Best-effort thumbnail discovery with fast fallback."""
-    fallback = get_placeholder_image_data_uri()
-    if not url:
-        return fallback
-
-    try:
-        response = requests.get(
-            url,
-            headers={"User-Agent": config.USER_AGENT},
-            timeout=(0.5, 1.5),
-            allow_redirects=True,
-        )
-        response.raise_for_status()
-        soup = BeautifulSoup(response.text, "html.parser")
-
-        def _meta_content(attr_name: str, value: str) -> str:
-            node = soup.find("meta", attrs={attr_name: value})
-            if node and node.get("content"):
-                return str(node.get("content")).strip()
-            return ""
-
-        for attr_name, value in (
-            ("property", "og:image"),
-            ("name", "twitter:image"),
-            ("property", "og:image:url"),
-        ):
-            candidate = _meta_content(attr_name, value)
-            if candidate:
-                return urljoin(response.url, candidate)
-
-        root = soup.select_one("article") or soup.select_one("main") or soup.body or soup
-        for img in root.find_all("img", src=True):
-            src = str(img.get("src", "")).strip()
-            if not src:
-                continue
-            width = int(img.get("width") or 0)
-            height = int(img.get("height") or 0)
-            if width and width < 120:
-                continue
-            if height and height < 80:
-                continue
-            src_lower = src.lower()
-            if any(skip in src_lower for skip in ("logo", "icon", "avatar", "sprite")):
-                continue
-            return urljoin(response.url, src)
-    except Exception:
-        return fallback
-
-    return fallback
-
-
 @st.cache_data(ttl=60)
 def get_unique_keyword_tags() -> list[str]:
     """Get all distinct keyword tags currently present in the database."""
@@ -466,6 +410,7 @@ def load_documents_filtered(
                 "fetched_at": doc.fetched_at,
                 "processing_status": doc.processing_status,
                 "local_file_path": doc.local_file_path,
+                "thumbnail_url": doc.thumbnail_url,
                 "url": doc.url,
                 "full_text": doc.full_text,
                 "has_summary": bool(doc.ai_summary),
@@ -525,6 +470,7 @@ def get_document_details(doc_id: int) -> dict:
                 "fetched_at": doc.fetched_at,
                 "content_type": doc.content_type,
                 "local_file_path": doc.local_file_path,
+                "thumbnail_url": doc.thumbnail_url,
                 "full_text": doc.full_text,
                 "processing_status": doc.processing_status,
                 "is_relevant": doc.is_relevant,
@@ -567,7 +513,7 @@ def render_card(doc: dict) -> str:
     date_str = doc["publication_date"].strftime("%d-%m-%Y") if doc.get("publication_date") else "Onbekend"
     author = doc.get("source_name") or "Onbekend"
     summary = build_card_summary(doc.get("full_text"), source_name=author, publication_date=doc.get("publication_date"))
-    thumb_url = get_article_thumbnail_url(doc.get("url") or "")
+    thumb_url = doc.get("thumbnail_url") or get_placeholder_image_data_uri()
     visible_tags, overflow = get_tier1_tag_chips(doc.get("keyword_tags", []))
     tags_html = "".join([f"<span class='card-tag'>{html.escape(tag)}</span>" for tag in visible_tags])
     if overflow > 0:
@@ -665,6 +611,8 @@ def render_document_detail(doc_id: int):
                         if db_doc:
                             db_doc.content_type = result["type"]
                             db_doc.local_file_path = result["file_path"]
+                            if result.get("thumbnail_url"):
+                                db_doc.thumbnail_url = result["thumbnail_url"]
                             db_doc.full_text = result["text"]
                             session.commit()
                     

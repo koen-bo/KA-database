@@ -169,6 +169,7 @@ class MultiSourceIngester:
                 publication_date=pub_date,
                 content_type=result["type"],
                 local_file_path=result["file_path"],
+                thumbnail_url=result.get("thumbnail_url"),
                 full_text=result["text"],
                 processing_status="new",
                 discovery_method=candidate.get("discovery_method"),
