@@ -39,6 +39,7 @@ class ContentFetcher:
         self.timeout = config.REQUEST_TIMEOUT
         self.user_agent = config.USER_AGENT
         self.pdf_folder = config.PDF_STORAGE_PATH
+        self.pdf_text_delimiter = "\n\n[PDF EXTRACT]\n\n"
         
         # Ensure PDF folder exists
         os.makedirs(self.pdf_folder, exist_ok=True)
@@ -171,27 +172,39 @@ class ContentFetcher:
             title: Document title for PDF filename (used for matching)
         
         Returns:
-            FetchResult with extracted text and optional PDF file_path
+            FetchResult with HTML text, and when available, appended PDF text
+            plus optional PDF file_path
         """
+        html_result = self._process_html(html_content)
+        if not html_result:
+            return None
+
         try:
             soup = BeautifulSoup(html_content, "html.parser")
-            
+
             # Check for PDF download links (common on government document pages)
             # Pass article title for smart matching
             pdf_url = self._find_pdf_download_link(soup, url, article_title=title)
-            
+
             if pdf_url:
-                # Try to download the PDF
+                # Try to download the PDF and append its text to article text.
                 pdf_result = self._download_pdf_from_url(pdf_url, source_name, title)
-                if pdf_result:
-                    return pdf_result
-            
-            # Fall back to regular HTML processing
-            return self._process_html(html_content)
-            
+                if pdf_result and pdf_result.get("file_path"):
+                    merged_text = self._merge_article_and_pdf_text(
+                        html_result.get("text", ""),
+                        pdf_result.get("text", ""),
+                    )
+                    return {
+                        "text": merged_text,
+                        "type": "html",
+                        "file_path": pdf_result["file_path"],
+                    }
+
+            return html_result
+
         except Exception as e:
             print(f"[Fetcher] Error processing HTML with PDF check: {e}")
-            return self._process_html(html_content)
+            return html_result
     
     def _find_pdf_download_link(self, soup: BeautifulSoup, page_url: str, article_title: str = "") -> Optional[str]:
         """
@@ -525,6 +538,28 @@ class ContentFetcher:
         except Exception as e:
             print(f"[Fetcher] Error processing HTML: {e}")
             return None
+
+    def _merge_article_and_pdf_text(self, article_text: str, pdf_text: str) -> str:
+        """
+        Merge article and PDF text using a stable delimiter.
+
+        Args:
+            article_text: Text extracted from article HTML
+            pdf_text: Text extracted from linked PDF
+
+        Returns:
+            Merged text with deterministic ordering and delimiter
+        """
+        article = (article_text or "").strip()
+        pdf = (pdf_text or "").strip()
+
+        if article and pdf:
+            return f"{article}{self.pdf_text_delimiter}{pdf}".strip()
+        if article:
+            return article
+        if pdf:
+            return pdf
+        return ""
     
     def _generate_pdf_filename(self, source_name: str, title: str, url: str) -> str:
         """

@@ -52,7 +52,7 @@ KA-database/
 | `modules/discovery_sitemap.py` | Sitemap candidate discovery | Sitemap source config, include/exclude rules | Candidate list | HTTP/XML parsing, skips broken child sitemaps |
 | `modules/discovery_listing.py` | Listing-page candidate discovery | Listing source config + selector templates | Candidate list | HTTP/HTML parsing + pagination |
 | `modules/filter.py` | Tiered relevance + keyword tag extraction | Candidate/document text + keyword/context lists | `FilterResult`, keyword tags | No persistent writes |
-| `modules/fetcher.py` | URL content retrieval/extraction | URL, source name, title | `FetchResult` (`text`,`type`,`file_path`) | HTTP requests, PDF downloads, text extraction |
+| `modules/fetcher.py` | URL content retrieval/extraction | URL, source name, title | `FetchResult` (`text`,`type`,`file_path`) | HTTP requests, HTML extraction, PDF downloads, merged article+PDF text for HTML pages with linked PDFs |
 | `modules/database.py` | SQLAlchemy model/session utilities | `config.DATABASE_PATH`, document payloads | `Document` records + helper queries | Creates/migrates tables; DB reads/writes |
 | `refetch_pdfs.py` | Backfill missing PDFs for existing rows | Existing docs without local PDF path | Updated rows | Downloads/stores PDFs; DB updates |
 | `backfill_tags.py` | Backfill/recompute keyword tags for existing rows | Existing docs + keyword files | Updated `keyword_tags` values + run stats | DB updates; optional dry-run |
@@ -63,6 +63,8 @@ KA-database/
   - source metadata (`url`, `source_name`, `title`, `publication_date`)
   - discovery metadata (`discovery_method`, `discovery_source_url`)
   - fetched artifacts (`content_type`, `local_file_path`, `full_text`, `fetched_at`)
+    - HTML pages with linked PDFs store article text plus appended PDF text in `full_text`, keep `content_type='html'`, and set `local_file_path`.
+    - Direct PDF URLs store PDF-only text with `content_type='pdf'`.
   - keyword tags (`keyword_tags` JSON array with all matched Tier 1/Tier 2 keywords)
   - processing and AI fields (`processing_status`, `is_relevant`, `ai_summary`, `ai_tasks_json`)
 - PDF storage: `<KA_DATA_DIR or BASE_DIR>/pdfs`.

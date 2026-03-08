@@ -50,8 +50,10 @@ The app operates as a document intelligence workflow with automated ingestion an
   - `requests` with configured timeout and user-agent.
 - PDF path:
   - content-type/URL detection, optional PDF-link discovery on HTML pages, PDF saved to `pdfs/`, text extracted with `pypdf`.
+  - for HTML pages with linked PDFs, article text is extracted first and PDF text is appended to `full_text` with delimiter `"[PDF EXTRACT]"`; `content_type` remains `html` and `local_file_path` stores the PDF path.
 - HTML path:
   - parse with `BeautifulSoup`, strip clutter tags, extract main/body text.
+  - direct PDF URLs remain `content_type = pdf` with PDF-only extracted text.
 
 ### 5. Dashboard Operations
 - Document browser supports:
