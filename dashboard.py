@@ -584,7 +584,7 @@ def render_card(doc: dict) -> str:
             <div class="card-summary">{html.escape(summary)}</div>
         </div>
         <div class="card-cta-wrap">
-            <a class="card-cta" href="?open_doc={doc_id}">
+            <a class="card-cta" href="?open_doc={doc_id}" target="_self">
                 <span>details</span>
                 <span class="card-cta-icon">&#8250;</span>
             </a>
