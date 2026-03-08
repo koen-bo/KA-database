@@ -1,4 +1,4 @@
-"""
+﻿"""
 Climate Adaptation Knowledge Base - Dashboard
 
 A Streamlit frontend to:
@@ -13,13 +13,20 @@ Run with: streamlit run dashboard.py
 
 import json
 import hmac
+import html
 import os
+import re
 import subprocess
+import textwrap
+from base64 import b64encode
 from datetime import datetime, timedelta
+from urllib.parse import urljoin
 
 import pandas as pd
+import requests
 import streamlit as st
 from sqlalchemy import or_, func
+from bs4 import BeautifulSoup
 
 from modules.database import get_session, Document, init_db
 from modules.fetcher import ContentFetcher
@@ -28,7 +35,7 @@ import config
 # Page config
 st.set_page_config(
     page_title="Klimaatadaptatie KB",
-    page_icon="🌍",
+    page_icon="KB",
     layout="wide"
 )
 
@@ -38,39 +45,128 @@ init_db()
 # Custom CSS for cards
 st.markdown("""
 <style>
-.doc-card {
-    border: 1px solid #ddd;
-    border-radius: 8px;
-    padding: 16px;
-    margin: 8px 0;
-    background: #fafafa;
+.card-shell {
+    border: 1px solid #e8edf3;
+    border-radius: 14px;
+    background: #ffffff;
+    overflow: hidden;
+    box-shadow: 0 2px 10px rgba(12, 24, 36, 0.06);
+    transition: transform 120ms ease, box-shadow 120ms ease, border-color 120ms ease;
+    margin-bottom: 0;
+    width: 100%;
+    max-width: none;
+    display: flex;
+    flex-direction: column;
+    min-height: 100%;
 }
-.doc-card:hover {
-    border-color: #1f77b4;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+.card-shell:hover {
+    transform: translateY(-2px);
+    border-color: #c4d4e6;
+    box-shadow: 0 8px 20px rgba(12, 24, 36, 0.12);
 }
-.doc-title {
-    font-weight: bold;
-    font-size: 1.1em;
+.card-thumb {
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    object-fit: cover;
+    display: block;
+}
+.card-content {
+    padding: 12px 14px 6px 14px;
+    flex: 1 1 auto;
+}
+.card-tags {
     margin-bottom: 8px;
-    color: #1f77b4;
+    min-height: 24px;
 }
-.doc-meta {
-    color: #666;
-    font-size: 0.9em;
-    margin-bottom: 4px;
-}
-.badge {
+.card-tag {
     display: inline-block;
     padding: 2px 8px;
-    border-radius: 12px;
-    font-size: 0.8em;
-    margin-right: 4px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+    margin-right: 6px;
+    margin-bottom: 6px;
+    background: #e8f2ff;
+    color: #14508d;
 }
-.badge-new { background: #fff3cd; color: #856404; }
-.badge-analyzed { background: #d4edda; color: #155724; }
-.badge-failed { background: #f8d7da; color: #721c24; }
-.badge-pdf { background: #cce5ff; color: #004085; }
+.card-tag-overflow {
+    background: #eef2f6;
+    color: #3b4c61;
+}
+.card-meta {
+    color: #73859a;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    margin-bottom: 8px;
+}
+.card-title {
+    color: #1b2b3a;
+    font-size: 18px;
+    line-height: 1.28;
+    font-weight: 750;
+    margin-bottom: 8px;
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    min-height: 70px;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+}
+.card-summary {
+    color: #687b90;
+    font-size: 14px;
+    line-height: 1.45;
+    margin-bottom: 10px;
+    display: -webkit-box;
+    -webkit-line-clamp: 8;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    min-height: 140px;
+}
+.card-cta-wrap {
+    padding: 0 14px 14px 14px;
+}
+.card-cta {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    color: #3d82d8;
+    font-weight: 600;
+    font-size: 16px;
+    text-decoration: none;
+}
+.card-cta:hover {
+    color: #2f72c6;
+}
+.card-cta-icon {
+    width: 18px;
+    height: 18px;
+    border: 1px solid #8cb4e5;
+    border-radius: 999px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    line-height: 1;
+}
+.card-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(250px, 300px));
+    gap: 14px;
+    align-items: stretch;
+    justify-content: start;
+}
+@media (max-width: 640px) {
+    .card-grid {
+        grid-template-columns: minmax(220px, 1fr);
+        gap: 10px;
+    }
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -160,6 +256,141 @@ def parse_keyword_tags(raw: str | None) -> list[str]:
     return sorted(set(tags))
 
 
+@st.cache_data(ttl=300)
+def get_tier1_keyword_set() -> set[str]:
+    """Load Tier 1 keywords as lowercase set for tag display filtering."""
+    return {kw.strip().lower() for kw in config.load_tier1_keywords() if kw and kw.strip()}
+
+
+def get_tier1_tag_chips(doc_tags: list[str]) -> tuple[list[str], int]:
+    """Return up to 3 tier1 tags and overflow count for card chips."""
+    tier1_set = get_tier1_keyword_set()
+    tier1_tags = sorted([tag for tag in doc_tags if tag in tier1_set])
+    visible = tier1_tags[:3]
+    overflow = max(0, len(tier1_tags) - len(visible))
+    return visible, overflow
+
+
+def extract_html_text_for_summary(full_text: str | None) -> str:
+    """Use only HTML text for summary when PDF extract is appended."""
+    if not full_text:
+        return ""
+    text = str(full_text)
+    delimiter = "[PDF EXTRACT]"
+    if delimiter in text:
+        text = text.split(delimiter, 1)[0]
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def _strip_summary_leading_noise(text: str, source_name: str = "", publication_date: datetime | None = None) -> str:
+    """Trim common leading noise like dates, source names, and byline fragments."""
+    cleaned = text.strip()
+    patterns = [
+        r"^\s*\d{1,2}[-/]\d{1,2}[-/]\d{2,4}\s*[|/,\-]?\s*",
+        r"^\s*\d{4}[-/]\d{1,2}[-/]\d{1,2}\s*[|/,\-]?\s*",
+        r"^\s*(door|by)\s+[^.!?]{2,70}\s*[|/,\-]?\s*",
+    ]
+    for pattern in patterns:
+        cleaned = re.sub(pattern, "", cleaned, flags=re.IGNORECASE).strip()
+
+    if source_name:
+        source_pattern = re.escape(source_name.strip())
+        cleaned = re.sub(rf"^\s*{source_pattern}\s*[|/,\-]?\s*", "", cleaned, flags=re.IGNORECASE).strip()
+
+    if publication_date:
+        for date_pattern in (
+            publication_date.strftime("%d-%m-%Y"),
+            publication_date.strftime("%Y-%m-%d"),
+            publication_date.strftime("%d/%m/%Y"),
+        ):
+            if date_pattern:
+                cleaned = re.sub(rf"^\s*{re.escape(date_pattern)}\s*[|/,\-]?\s*", "", cleaned).strip()
+    return cleaned
+
+
+def build_card_summary(full_text: str | None, source_name: str = "", publication_date: datetime | None = None) -> str:
+    """Create short card summary from extracted HTML text."""
+    base_text = extract_html_text_for_summary(full_text)
+    if not base_text:
+        return "Geen samenvatting beschikbaar."
+
+    cleaned = _strip_summary_leading_noise(base_text, source_name=source_name, publication_date=publication_date)
+    if not cleaned:
+        return "Geen samenvatting beschikbaar."
+
+    sentences = re.split(r"(?<=[.!?])\s+", cleaned)
+    picked = [s.strip() for s in sentences if s and len(s.strip()) > 8][:2]
+    if picked:
+        summary = " ".join(picked)
+    else:
+        summary = cleaned[:220]
+        if len(cleaned) > 220:
+            summary += "..."
+    return summary
+
+
+@st.cache_data(ttl=86400, show_spinner=False)
+def get_placeholder_image_data_uri() -> str:
+    """Return data URI for bundled climate placeholder image."""
+    placeholder_path = os.path.join(config.BASE_DIR, "assets", "climate_placeholder.svg")
+    with open(placeholder_path, "rb") as f:
+        encoded = b64encode(f.read()).decode("ascii")
+    return f"data:image/svg+xml;base64,{encoded}"
+
+
+@st.cache_data(ttl=86400, show_spinner=False)
+def get_article_thumbnail_url(url: str) -> str:
+    """Best-effort thumbnail discovery with fast fallback."""
+    fallback = get_placeholder_image_data_uri()
+    if not url:
+        return fallback
+
+    try:
+        response = requests.get(
+            url,
+            headers={"User-Agent": config.USER_AGENT},
+            timeout=(0.5, 1.5),
+            allow_redirects=True,
+        )
+        response.raise_for_status()
+        soup = BeautifulSoup(response.text, "html.parser")
+
+        def _meta_content(attr_name: str, value: str) -> str:
+            node = soup.find("meta", attrs={attr_name: value})
+            if node and node.get("content"):
+                return str(node.get("content")).strip()
+            return ""
+
+        for attr_name, value in (
+            ("property", "og:image"),
+            ("name", "twitter:image"),
+            ("property", "og:image:url"),
+        ):
+            candidate = _meta_content(attr_name, value)
+            if candidate:
+                return urljoin(response.url, candidate)
+
+        root = soup.select_one("article") or soup.select_one("main") or soup.body or soup
+        for img in root.find_all("img", src=True):
+            src = str(img.get("src", "")).strip()
+            if not src:
+                continue
+            width = int(img.get("width") or 0)
+            height = int(img.get("height") or 0)
+            if width and width < 120:
+                continue
+            if height and height < 80:
+                continue
+            src_lower = src.lower()
+            if any(skip in src_lower for skip in ("logo", "icon", "avatar", "sprite")):
+                continue
+            return urljoin(response.url, src)
+    except Exception:
+        return fallback
+
+    return fallback
+
+
 @st.cache_data(ttl=60)
 def get_unique_keyword_tags() -> list[str]:
     """Get all distinct keyword tags currently present in the database."""
@@ -236,6 +467,7 @@ def load_documents_filtered(
                 "processing_status": doc.processing_status,
                 "local_file_path": doc.local_file_path,
                 "url": doc.url,
+                "full_text": doc.full_text,
                 "has_summary": bool(doc.ai_summary),
                 "has_tasks": bool(doc.ai_tasks_json),
                 "keyword_tags": doc_tags,
@@ -328,46 +560,59 @@ def save_ai_tasks(doc_id: int, tasks_json: str) -> bool:
     return False
 
 
-def render_card(doc: dict):
-    """Render a document card."""
-    with st.container():
-        # Status badges
-        badges = []
-        if doc["processing_status"] == "new":
-            badges.append("🆕 Nieuw")
-        elif doc["processing_status"] == "analyzed":
-            badges.append("✅ Geanalyseerd")
-        elif doc["processing_status"] == "failed":
-            badges.append("❌ Mislukt")
-        
-        if doc["local_file_path"]:
-            badges.append("📄 PDF")
-        
-        if doc["has_summary"]:
-            badges.append("📝 Samenvatting")
-        if doc["has_tasks"]:
-            badges.append("📊 Opgaven")
-        
-        badge_str = " | ".join(badges)
-        
-        # Format date
-        date_str = ""
-        if doc["publication_date"]:
-            date_str = doc["publication_date"].strftime("%d-%m-%Y")
-        
-        col1, col2 = st.columns([4, 1])
-        
-        with col1:
-            st.markdown(f"**{doc['title'][:100]}{'...' if doc['title'] and len(doc['title']) > 100 else ''}**")
-            st.caption(f"🏢 {doc['source_name'] or 'Onbekend'} | 📅 {date_str} | {badge_str}")
-        
-        with col2:
-            if st.button("📖 Details", key=f"card_{doc['id']}"):
-                st.session_state.selected_doc_id = doc['id']
-                st.session_state.show_detail = True
-                st.rerun()
-        
-        st.divider()
+def render_card(doc: dict) -> str:
+    """Build HTML for a single document card."""
+    title_raw = doc.get("title") or "Geen titel"
+    title = title_raw
+    date_str = doc["publication_date"].strftime("%d-%m-%Y") if doc.get("publication_date") else "Onbekend"
+    author = doc.get("source_name") or "Onbekend"
+    summary = build_card_summary(doc.get("full_text"), source_name=author, publication_date=doc.get("publication_date"))
+    thumb_url = get_article_thumbnail_url(doc.get("url") or "")
+    visible_tags, overflow = get_tier1_tag_chips(doc.get("keyword_tags", []))
+    tags_html = "".join([f"<span class='card-tag'>{html.escape(tag)}</span>" for tag in visible_tags])
+    if overflow > 0:
+        tags_html += f"<span class='card-tag card-tag-overflow'>+{overflow}</span>"
+
+    doc_id = int(doc["id"])
+    return textwrap.dedent(f"""
+    <article class="card-shell">
+        <img class="card-thumb" src="{html.escape(thumb_url)}" alt="thumbnail">
+        <div class="card-content">
+            <div class="card-tags">{tags_html}</div>
+            <div class="card-meta">{html.escape(date_str)} / {html.escape(author)}</div>
+            <div class="card-title">{html.escape(title)}</div>
+            <div class="card-summary">{html.escape(summary)}</div>
+        </div>
+        <div class="card-cta-wrap">
+            <a class="card-cta" href="?open_doc={doc_id}">
+                <span>details</span>
+                <span class="card-cta-icon">&#8250;</span>
+            </a>
+        </div>
+    </article>
+    """).strip()
+
+
+def render_cards_grid(docs: list[dict]) -> None:
+    """Render cards in an adaptive CSS grid with stable readable card widths."""
+    cards_html = "".join(render_card(doc) for doc in docs)
+    st.markdown(f'<div class="card-grid">{cards_html}</div>', unsafe_allow_html=True)
+
+
+def consume_open_doc_query_param() -> None:
+    """Open document detail when card CTA sets ?open_doc=<id>."""
+    open_doc = st.query_params.get("open_doc")
+    if not open_doc:
+        return
+    try:
+        doc_id = int(str(open_doc))
+    except Exception:
+        del st.query_params["open_doc"]
+        return
+    st.session_state.selected_doc_id = doc_id
+    st.session_state.show_detail = True
+    del st.query_params["open_doc"]
+    st.rerun()
 
 
 def render_document_detail(doc_id: int):
@@ -705,6 +950,7 @@ page = st.sidebar.radio(
 
 if page == "📚 Documenten":
     st.title("Documentbrowser")
+    consume_open_doc_query_param()
     
     # Check if we should show detail view
     if st.session_state.get("show_detail") and st.session_state.get("selected_doc_id"):
@@ -802,12 +1048,12 @@ if page == "📚 Documenten":
         # ==========================================================================
         col_view, col_limit = st.columns([6, 1])
         with col_view:
-            view_mode = st.radio(
-                "Weergave",
-                ["📋 Lijst", "🃏 Kaarten"],
-                horizontal=True,
-                label_visibility="collapsed"
-            )
+                view_mode = st.radio(
+                    "Weergave",
+                    ["📋 Lijst", "🃏 Kaarten"],
+                    horizontal=True,
+                    label_visibility="collapsed"
+                )
         with col_limit:
             limit = st.selectbox(
                 "Max resultaten",
@@ -873,7 +1119,7 @@ if page == "📚 Documenten":
         if not docs:
             st.info("Geen documenten gevonden. Pas de filters aan of voer de pipeline uit.")
         else:
-            st.caption(f"Toont **{len(docs)}** documenten • Klik op een rij om details te openen")
+            st.caption(f"Toont **{len(docs)}** documenten - Klik op een rij om details te openen")
             
             if view_mode == "📋 Lijst":
                 # --- LIST VIEW with clickable rows ---
@@ -932,8 +1178,7 @@ if page == "📚 Documenten":
             
             else:
                 # --- CARD VIEW ---
-                for doc in docs:
-                    render_card(doc)
+                render_cards_grid(docs)
 
 
 elif page == "🔤 Zoektermen":
@@ -1183,3 +1428,4 @@ elif page == "▶️ Pipeline":
 st.sidebar.markdown("---")
 st.sidebar.caption(f"Database: `{config.DATABASE_PATH}`")
 st.sidebar.caption(f"PDFs: `{config.PDF_STORAGE_PATH}`")
+

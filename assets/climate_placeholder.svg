@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="675" viewBox="0 0 1200 675" role="img" aria-label="Climate adaptation placeholder">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#d8ecf8"/>
+      <stop offset="100%" stop-color="#f1f8fc"/>
+    </linearGradient>
+    <linearGradient id="water" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#7fb7dc"/>
+      <stop offset="100%" stop-color="#4c8fb8"/>
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="675" fill="url(#bg)"/>
+  <path d="M0 455 C140 425, 250 470, 390 450 C540 430, 650 490, 815 465 C930 448, 1040 482, 1200 455 L1200 675 L0 675 Z" fill="url(#water)"/>
+  <path d="M0 505 C170 470, 300 528, 455 498 C605 468, 725 538, 880 505 C1010 478, 1110 522, 1200 508 L1200 675 L0 675 Z" fill="#3f7da6" opacity="0.72"/>
+  <circle cx="980" cy="145" r="62" fill="#fff5cb" opacity="0.95"/>
+  <rect x="72" y="74" width="320" height="48" rx="24" fill="#ffffff" opacity="0.92"/>
+  <text x="232" y="106" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="22" font-weight="700" fill="#2e5877">KLIMAATADAPTATIE</text>
+  <text x="72" y="620" font-family="Segoe UI, Arial, sans-serif" font-size="28" font-weight="700" fill="#ffffff">Geen artikelafbeelding beschikbaar</text>
+</svg>
