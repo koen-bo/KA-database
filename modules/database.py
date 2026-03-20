@@ -48,6 +48,13 @@ class Document(Base):
     cleaned_text: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     cleaned_text_updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     cleaned_text_version: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    screening_status: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    screening_requested_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    screened_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    screening_model: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    screening_input_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    screening_output_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    screening_error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     
     # Processing status
     processing_status: Mapped[str] = mapped_column(String(50), default="new")  # 'new', 'analyzed', 'failed'
@@ -125,6 +132,20 @@ def _ensure_schema_columns() -> None:
             conn.execute(text("ALTER TABLE documents ADD COLUMN cleaned_text_updated_at DATETIME;"))
         if "cleaned_text_version" not in existing_columns:
             conn.execute(text("ALTER TABLE documents ADD COLUMN cleaned_text_version TEXT;"))
+        if "screening_status" not in existing_columns:
+            conn.execute(text("ALTER TABLE documents ADD COLUMN screening_status TEXT;"))
+        if "screening_requested_at" not in existing_columns:
+            conn.execute(text("ALTER TABLE documents ADD COLUMN screening_requested_at DATETIME;"))
+        if "screened_at" not in existing_columns:
+            conn.execute(text("ALTER TABLE documents ADD COLUMN screened_at DATETIME;"))
+        if "screening_model" not in existing_columns:
+            conn.execute(text("ALTER TABLE documents ADD COLUMN screening_model TEXT;"))
+        if "screening_input_json" not in existing_columns:
+            conn.execute(text("ALTER TABLE documents ADD COLUMN screening_input_json TEXT;"))
+        if "screening_output_json" not in existing_columns:
+            conn.execute(text("ALTER TABLE documents ADD COLUMN screening_output_json TEXT;"))
+        if "screening_error" not in existing_columns:
+            conn.execute(text("ALTER TABLE documents ADD COLUMN screening_error TEXT;"))
 
 
 def url_exists(url: str) -> bool:
@@ -266,10 +287,115 @@ def iter_documents_for_cleaned_text_backfill(
                 break
 
 
+def iter_documents_for_screening(
+    since_id: int = 0,
+    limit: Optional[int] = None,
+    batch_size: int = 200,
+    retry_failed: bool = False,
+    force_rescreen: bool = False,
+    doc_id: Optional[int] = None,
+):
+    """
+    Yield documents eligible for screening in deterministic ID order.
+    """
+    emitted = 0
+    with get_session() as session:
+        query = session.query(Document)
+
+        if doc_id is not None:
+            query = query.filter(Document.id == doc_id)
+        else:
+            query = query.filter(Document.id > since_id)
+
+        if not force_rescreen:
+            if retry_failed:
+                query = query.filter(
+                    (Document.screening_status == None)
+                    | (Document.screening_status == "failed")
+                )
+            else:
+                query = query.filter(Document.screening_status == None)
+
+        query = query.order_by(Document.id.asc())
+
+        if limit is not None and limit >= 0:
+            query = query.limit(limit)
+
+        if batch_size <= 0:
+            batch_size = 200
+
+        for doc in query.yield_per(batch_size):
+            yield doc
+            emitted += 1
+            if limit is not None and limit >= 0 and emitted >= limit:
+                break
+
+
 def get_documents_by_status(status: str) -> list[Document]:
     """Get all documents with a specific processing status."""
     with get_session() as session:
         return session.query(Document).filter(Document.processing_status == status).all()
+
+
+def mark_document_screening_pending(doc_id: int, input_json: str, model: str) -> bool:
+    """Mark a document as pending screening and persist the request payload."""
+    with get_session() as session:
+        doc = session.query(Document).filter(Document.id == doc_id).first()
+        if not doc:
+            return False
+        now = datetime.now()
+        doc.screening_status = "pending"
+        doc.screening_requested_at = now
+        doc.screening_model = model
+        doc.screening_input_json = input_json
+        doc.screening_error = None
+        session.commit()
+        return True
+
+
+def mark_document_screening_completed(
+    doc_id: int,
+    input_json: str,
+    output_json: str,
+    model: str,
+) -> bool:
+    """Persist a completed screening result."""
+    with get_session() as session:
+        doc = session.query(Document).filter(Document.id == doc_id).first()
+        if not doc:
+            return False
+        now = datetime.now()
+        doc.screening_status = "completed"
+        doc.screening_requested_at = doc.screening_requested_at or now
+        doc.screened_at = now
+        doc.screening_model = model
+        doc.screening_input_json = input_json
+        doc.screening_output_json = output_json
+        doc.screening_error = None
+        session.commit()
+        return True
+
+
+def mark_document_screening_failed(
+    doc_id: int,
+    input_json: str,
+    model: str,
+    error_text: str,
+) -> bool:
+    """Persist a failed screening attempt."""
+    with get_session() as session:
+        doc = session.query(Document).filter(Document.id == doc_id).first()
+        if not doc:
+            return False
+        now = datetime.now()
+        doc.screening_status = "failed"
+        doc.screening_requested_at = doc.screening_requested_at or now
+        doc.screened_at = None
+        doc.screening_model = model
+        doc.screening_input_json = input_json
+        doc.screening_error = error_text[:1000]
+        session.commit()
+        return True
 
 
 def get_latest_source_timestamp(source_name: str) -> Optional[datetime]:

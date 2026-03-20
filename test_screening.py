@@ -456,6 +456,22 @@ class ScreeningOutputValidationTests(unittest.TestCase):
 
         self.assertEqual(output.cross_domain_explanation, "none")
 
+    def test_validate_screening_output_rejects_related_labels_when_cross_domain_signal_is_none(self):
+        with self.assertRaises(ValueError):
+            validate_screening_output(
+                {
+                    "short_summary": "Samenvatting.",
+                    "climate_adaptation_relevance_score": 5,
+                    "climate_adaptation_explanation": "Toelichting.",
+                    "primary_opgave": "klimaatadaptatie",
+                    "related_opgaves": ["verduurzamen_gebouwde_omgeving"],
+                    "related_transities": [],
+                    "cross_domain_relevance_signal": "none",
+                    "cross_domain_explanation": "none",
+                    "confidence": 0.7,
+                }
+            )
+
     def test_validate_screening_output_requires_klimaatadaptatie_link_for_possible_or_clear(self):
         with self.assertRaises(ValueError):
             validate_screening_output(
@@ -468,6 +484,22 @@ class ScreeningOutputValidationTests(unittest.TestCase):
                     "related_transities": ["energie_en_klimaattransitie"],
                     "cross_domain_relevance_signal": "possible",
                     "cross_domain_explanation": "Er is een koppeling met de gebouwde omgeving, maar die wordt niet expliciet genoeg gemaakt.",
+                    "confidence": 0.6,
+                }
+            )
+
+    def test_validate_screening_output_requires_related_labels_for_possible_or_clear(self):
+        with self.assertRaises(ValueError):
+            validate_screening_output(
+                {
+                    "short_summary": "Samenvatting.",
+                    "climate_adaptation_relevance_score": 6,
+                    "climate_adaptation_explanation": "Toelichting.",
+                    "primary_opgave": "klimaatadaptatie",
+                    "related_opgaves": [],
+                    "related_transities": [],
+                    "cross_domain_relevance_signal": "possible",
+                    "cross_domain_explanation": "klimaatadaptatie x verduurzamen_gebouwde_omgeving: hittestress werkt door in stedelijke ontwerpkeuzes.",
                     "confidence": 0.6,
                 }
             )

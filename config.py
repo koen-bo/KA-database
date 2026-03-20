@@ -15,6 +15,9 @@ All keyword lists and sources are loaded from separate text files for easy editi
 import json
 import os
 from typing import TypedDict
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # =============================================================================
 # FILE PATHS
@@ -46,6 +49,17 @@ PROMPTS_FILE = os.path.join(BASE_DIR, "prompts.json")
 
 REQUEST_TIMEOUT = 15
 USER_AGENT = "ClimateMonitor/1.0 (Climate Adaptation Research Bot)"
+
+# =============================================================================
+# LLM SCREENING CONFIGURATION
+# =============================================================================
+
+OPENAI_API_KEY = os.getenv("KA_OPENAI_API_KEY", "").strip()
+OPENAI_MODEL = os.getenv("KA_OPENAI_MODEL", "gpt-4.1-mini").strip()
+OPENAI_BASE_URL = os.getenv("KA_OPENAI_BASE_URL", "https://api.openai.com/v1").strip().rstrip("/")
+OPENAI_TIMEOUT_SECONDS = int(os.getenv("KA_OPENAI_TIMEOUT_SECONDS", "45"))
+OPENAI_MAX_RETRIES = int(os.getenv("KA_OPENAI_MAX_RETRIES", "2"))
+SCREENING_BATCH_SIZE = int(os.getenv("KA_SCREENING_BATCH_SIZE", "10"))
 
 # =============================================================================
 # HELPER FUNCTIONS
@@ -312,18 +326,20 @@ def load_prompts() -> dict[str, str]:
                 "Je beoordeelt bronnen vanuit het perspectief van RVO als uitvoeringsorganisatie. "
                 "Gebruik klimaatadaptatie als ankerlens. Water en bodem zijn daarbij onderwerpen van interesse binnen klimaatadaptatie, "
                 "niet aparte domeinen of aparte labels. "
-                "Beoordeel niet alleen of iets over klimaatadaptatie gaat, maar ook of het echt past bij RVO's rol en instrumenten."
+                "Beoordeel niet alleen of iets over klimaatadaptatie gaat, maar ook of het echt past bij RVO's rol en instrumenten. "
+                "Wees terughoudend met topscores voor technisch waterbeheer of primaire waterveiligheid zonder duidelijke RVO-haakjes."
             ),
             "screening_task_instructions": (
                 "Schrijf een korte samenvatting vanuit een RVO-uitvoeringsperspectief. "
                 "Beoordeel hoe relevant de bron is voor klimaatadaptatie en voor RVO's rol daarin, en welke cross-opgave of cross-transitie koppelingen echt sterk zijn. "
                 "Forceer geen nearest label als de gecontroleerde vocabulaire niet goed past. "
                 "Gebruik cross_domain_relevance_signal alleen voor echte koppelingen buiten klimaatadaptatie zelf. "
-                "Bij cross_domain_relevance_signal='none' mag cross_domain_explanation leeg zijn of 'none' zijn."
+                "Bij cross_domain_relevance_signal='none' moeten related velden leeg zijn en mag cross_domain_explanation leeg zijn of 'none' zijn. "
+                "Noem water of bodem alleen expliciet als de bron die onderwerpen echt centraal stelt."
             ),
             "screening_output_contract": (
                 "Geef uitsluitend JSON terug volgens het afgesproken screeningschema met gecontroleerde labels voor opgaven en transities, "
-                "laat related velden leeg als geen sterke match bestaat, sta een lege of 'none' cross_domain_explanation toe wanneer het signaal 'none' is, "
+                "laat related velden leeg als geen sterke match bestaat en altijd wanneer het signaal 'none' is, sta een lege of 'none' cross_domain_explanation toe wanneer het signaal 'none' is, "
                 "behandel climate_adaptation_relevance_score als een combinatie van klimaatadaptatierelevantie en relevantie voor RVO's rol, "
                 "en gebruik 'none' als de sterkste koppeling binnen klimaatadaptatie zelf blijft."
             ),

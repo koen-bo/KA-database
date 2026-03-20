@@ -339,8 +339,13 @@ def validate_screening_output(data: Any) -> ScreeningOutput:
             raise ValueError("cross_domain_explanation must be provided when cross_domain_relevance_signal is possible or clear")
         if "klimaatadaptatie x " not in cross_domain_explanation.lower():
             raise ValueError("cross_domain_explanation must explicitly describe a 'klimaatadaptatie x <opgave>' linkage")
-    elif not cross_domain_explanation:
-        cross_domain_explanation = "none"
+        if not related_opgaves and not related_transities:
+            raise ValueError("at least one related opgave or transitie must be provided when cross_domain_relevance_signal is possible or clear")
+    else:
+        if related_opgaves or related_transities:
+            raise ValueError("related_opgaves and related_transities must be empty when cross_domain_relevance_signal is none")
+        if not cross_domain_explanation:
+            cross_domain_explanation = "none"
 
     confidence = _require_float_in_range(data, "confidence", min_value=0.0, max_value=1.0)
 
