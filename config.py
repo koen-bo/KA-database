@@ -308,6 +308,25 @@ def load_prompts() -> dict[str, str]:
         return {
             "summary_prompt": "Maak een beknopte samenvatting van de volgende tekst...",
             "relevance_prompt": "Analyseer de relevantie voor de 21 opgaven...",
+            "screening_system_context": (
+                "Je beoordeelt bronnen vanuit het perspectief van RVO als uitvoeringsorganisatie. "
+                "Gebruik klimaatadaptatie als ankerlens. Water en bodem zijn daarbij onderwerpen van interesse binnen klimaatadaptatie, "
+                "niet aparte domeinen of aparte labels. "
+                "Beoordeel niet alleen of iets over klimaatadaptatie gaat, maar ook of het echt past bij RVO's rol en instrumenten."
+            ),
+            "screening_task_instructions": (
+                "Schrijf een korte samenvatting vanuit een RVO-uitvoeringsperspectief. "
+                "Beoordeel hoe relevant de bron is voor klimaatadaptatie en voor RVO's rol daarin, en welke cross-opgave of cross-transitie koppelingen echt sterk zijn. "
+                "Forceer geen nearest label als de gecontroleerde vocabulaire niet goed past. "
+                "Gebruik cross_domain_relevance_signal alleen voor echte koppelingen buiten klimaatadaptatie zelf. "
+                "Bij cross_domain_relevance_signal='none' mag cross_domain_explanation leeg zijn of 'none' zijn."
+            ),
+            "screening_output_contract": (
+                "Geef uitsluitend JSON terug volgens het afgesproken screeningschema met gecontroleerde labels voor opgaven en transities, "
+                "laat related velden leeg als geen sterke match bestaat, sta een lege of 'none' cross_domain_explanation toe wanneer het signaal 'none' is, "
+                "behandel climate_adaptation_relevance_score als een combinatie van klimaatadaptatierelevantie en relevantie voor RVO's rol, "
+                "en gebruik 'none' als de sterkste koppeling binnen klimaatadaptatie zelf blijft."
+            ),
         }
     except json.JSONDecodeError as e:
         print(f"Warning: Invalid JSON in prompts file: {e}")

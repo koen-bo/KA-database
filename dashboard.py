@@ -27,6 +27,15 @@ from sqlalchemy import or_, func
 
 from modules.database import get_session, Document, init_db
 from modules.fetcher import ContentFetcher
+from modules.screening import (
+    build_llm_screening_request,
+    build_screening_input,
+    build_screening_user_message,
+    compile_screening_system_prompt,
+    count_words,
+    screening_output_schema,
+    serialize_llm_screening_request,
+)
 import config
 
 # Page config
@@ -472,12 +481,51 @@ def get_document_details(doc_id: int) -> dict:
                 "local_file_path": doc.local_file_path,
                 "thumbnail_url": doc.thumbnail_url,
                 "full_text": doc.full_text,
+                "cleaned_text": doc.cleaned_text,
                 "processing_status": doc.processing_status,
                 "is_relevant": doc.is_relevant,
                 "ai_summary": doc.ai_summary,
                 "ai_tasks_json": doc.ai_tasks_json,
             }
     return None
+
+
+def get_sample_documents(limit: int = 100) -> list[dict]:
+    """Return recent documents for prompt studio sample selection."""
+    with get_session() as session:
+        docs = (
+            session.query(Document)
+            .filter((Document.cleaned_text != None) | (Document.full_text != None))
+            .order_by(Document.publication_date.desc().nullslast(), Document.id.desc())
+            .limit(limit)
+            .all()
+        )
+
+        data: list[dict] = []
+        for doc in docs:
+            data.append(
+                {
+                    "id": doc.id,
+                    "title": doc.title or f"Document {doc.id}",
+                    "source_name": doc.source_name,
+                    "publication_date": doc.publication_date,
+                    "url": doc.url,
+                    "content_type": doc.content_type,
+                    "discovery_method": doc.discovery_method,
+                    "full_text": doc.full_text,
+                    "cleaned_text": doc.cleaned_text,
+                    "keyword_tags": doc.keyword_tags,
+                    "local_file_path": doc.local_file_path,
+                }
+            )
+        return data
+
+
+def _format_sample_document_label(doc: dict) -> str:
+    date_label = doc["publication_date"].strftime("%d-%m-%Y") if doc.get("publication_date") else "Onbekend"
+    source_label = doc.get("source_name") or "Onbekende bron"
+    title_label = doc.get("title") or f"Document {doc.get('id')}"
+    return f"{doc['id']} | {date_label} | {source_label} | {title_label[:90]}"
 
 
 def save_ai_summary(doc_id: int, summary: str) -> bool:
@@ -562,7 +610,7 @@ def consume_open_doc_query_param() -> None:
 
 
 def render_document_detail(doc_id: int):
-    """Render the full document detail view with AI workflow."""
+    """Render the full document detail view with screening preview."""
     doc = get_document_details(doc_id)
     if not doc:
         st.error(f"Document {doc_id} niet gevonden")
@@ -633,237 +681,69 @@ def render_document_detail(doc_id: int):
     st.divider()
     
     # ==========================================================================
-    # AI WORKFLOW SECTION
+    # SCREENING PREVIEW
     # ==========================================================================
-    st.header("🤖 AI Analyse Workflow")
-    
-    # Load prompts
-    prompts = config.load_prompts()
-    
-    tab_summary, tab_tasks = st.tabs(["📝 Samenvatting", "📊 Opgave Analyse"])
-    
-    # --- SUMMARY TAB ---
-    with tab_summary:
-        st.subheader("Samenvatting")
-        
-        # Show existing summary if present
-        if doc['ai_summary']:
-            st.success("Samenvatting aanwezig")
-            st.markdown(doc['ai_summary'])
-            st.divider()
-        
-        # Prompt generation
-        with st.expander("🔧 Genereer Prompt voor AI", expanded=not doc['ai_summary']):
-            if st.button("📋 Genereer Samenvatting Prompt", key="gen_summary_prompt"):
-                # #region agent log
-                import json as json_module
-                log_data_summary = {
-                    "doc_id": doc_id,
-                    "has_full_text": bool(doc.get('full_text')),
-                    "full_text_length": len(doc.get('full_text') or '')
-                }
-                with open(r"c:\dev\KA-database\.cursor\debug.log", "a", encoding="utf-8") as f:
-                    f.write(json_module.dumps({"location": "dashboard.py:355", "message": "Summary prompt button clicked", "data": log_data_summary, "timestamp": __import__("time").time() * 1000, "runId": "run1", "hypothesisId": "F"}) + "\n")
-                # #endregion
-                if doc['full_text']:
-                    prompt_template = prompts.get("summary_prompt", "Maak een samenvatting van: {document_text}")
-                    # #region agent log
-                    log_data_summary2 = {
-                        "prompt_template_length": len(prompt_template),
-                        "has_placeholder": "{document_text}" in prompt_template,
-                        "placeholder_count": prompt_template.count("{document_text}")
-                    }
-                    with open(r"c:\dev\KA-database\.cursor\debug.log", "a", encoding="utf-8") as f:
-                        f.write(json_module.dumps({"location": "dashboard.py:358", "message": "Summary prompt template check", "data": log_data_summary2, "timestamp": __import__("time").time() * 1000, "runId": "run1", "hypothesisId": "G"}) + "\n")
-                    # #endregion
-                    full_prompt = prompt_template.replace("{document_text}", doc['full_text'])
-                    # #region agent log
-                    log_data_summary3 = {
-                        "full_prompt_length": len(full_prompt),
-                        "replacement_happened": full_prompt != prompt_template,
-                        "prompt_unchanged": full_prompt == prompt_template
-                    }
-                    with open(r"c:\dev\KA-database\.cursor\debug.log", "a", encoding="utf-8") as f:
-                        f.write(json_module.dumps({"location": "dashboard.py:359", "message": "Summary prompt after replacement", "data": log_data_summary3, "timestamp": __import__("time").time() * 1000, "runId": "run1", "hypothesisId": "H"}) + "\n")
-                    # #endregion
-                    # Store prompt with document-specific key to avoid stale data
-                    st.session_state[f"summary_prompt_{doc_id}"] = full_prompt
-                    st.rerun()  # Refresh to show updated prompt
-                else:
-                    st.error("Geen tekst beschikbaar om prompt mee te genereren")
-            
-            # Use document-specific key
-            prompt_key = f"summary_prompt_{doc_id}"
-            if prompt_key in st.session_state:
-                char_count = len(st.session_state[prompt_key])
-                st.info(f"📊 Prompt lengte: **{char_count:,}** karakters (~{char_count // 4:,} tokens)")
-                st.text_area(
-                    "Volledige prompt (selecteer alles met Ctrl+A, kopieer met Ctrl+C):",
-                    st.session_state[prompt_key],
-                    height=400,
-                    key=f"summary_prompt_output_{doc_id}"
-                )
-                st.caption("💡 Tip: Gebruik Ctrl+A in het tekstveld hierboven om alles te selecteren, dan Ctrl+C om te kopiëren.")
-        
-        # Input section
-        st.subheader("AI Output Invoeren")
-        summary_input = st.text_area(
-            "Plak hier de AI-gegenereerde samenvatting:",
-            value=doc['ai_summary'] or "",
-            height=200,
-            key="summary_input"
+    st.header("Screening Preview")
+    st.caption("Voorbeeld van wat deze bron in de screening-pipeline aan de LLM zou sturen.")
+
+    screening_input = build_screening_input(doc)
+    llm_request = build_llm_screening_request(screening_input)
+    llm_request_json = serialize_llm_screening_request(llm_request)
+    llm_user_message = build_screening_user_message(llm_request)
+
+    col_a, col_b, col_c = st.columns(3)
+    with col_a:
+        st.metric("Excerpt strategie", screening_input.excerpt_strategy)
+    with col_b:
+        st.metric("Excerpt woorden", count_words(screening_input.excerpt_text))
+    with col_c:
+        st.metric("Keyword tags", len(screening_input.keyword_tags))
+
+    with st.expander("Excerpt Preview", expanded=True):
+        if screening_input.excerpt_text:
+            st.text_area(
+                "Geselecteerde screeningtekst",
+                screening_input.excerpt_text,
+                height=320,
+                disabled=True,
+            )
+        else:
+            st.info("Geen excerpt beschikbaar.")
+
+    with st.expander("LLM Input JSON", expanded=False):
+        st.text_area(
+            "Reduced request object",
+            llm_request_json,
+            height=220,
+            disabled=True,
         )
-        
-        if st.button("💾 Opslaan Samenvatting", type="primary", key="save_summary"):
-            if summary_input.strip():
-                if save_ai_summary(doc_id, summary_input.strip()):
-                    st.success("Samenvatting opgeslagen!")
-                    st.rerun()
-                else:
-                    st.error("Fout bij opslaan")
-            else:
-                st.warning("Voer eerst een samenvatting in")
-    
-    # --- TASKS TAB ---
-    with tab_tasks:
-        st.subheader("Opgave Analyse (21 NAS Opgaven)")
-        
-        # Show existing analysis if present
-        if doc['ai_tasks_json']:
-            st.success("Opgave analyse aanwezig")
-            try:
-                tasks = json.loads(doc['ai_tasks_json'])
-                # Display as a table
-                if tasks:
-                    df = pd.DataFrame([
-                        {"Opgave": k, "Score": v} 
-                        for k, v in tasks.items()
-                    ]).sort_values("Score", ascending=False)
-                    st.dataframe(df, use_container_width=True, hide_index=True)
-            except json.JSONDecodeError:
-                st.warning("Opgeslagen JSON kon niet worden geparsed")
-                st.code(doc['ai_tasks_json'])
-            st.divider()
-        
-        # Prompt generation
-        with st.expander("🔧 Genereer Prompt voor AI", expanded=not doc['ai_tasks_json']):
-            if st.button("📋 Genereer Opgave Analyse Prompt", key="gen_tasks_prompt"):
-                # #region agent log
-                import json as json_module
-                log_data = {
-                    "doc_id": doc_id,
-                    "has_full_text": bool(doc.get('full_text')),
-                    "full_text_type": type(doc.get('full_text')).__name__,
-                    "full_text_length": len(doc.get('full_text') or ''),
-                    "full_text_preview": (doc.get('full_text') or '')[:100] if doc.get('full_text') else None
-                }
-                with open(r"c:\dev\KA-database\.cursor\debug.log", "a", encoding="utf-8") as f:
-                    f.write(json_module.dumps({"location": "dashboard.py:421", "message": "Button clicked - checking doc full_text", "data": log_data, "timestamp": __import__("time").time() * 1000, "runId": "run1", "hypothesisId": "A"}) + "\n")
-                # #endregion
-                if doc['full_text']:
-                    prompt_template = prompts.get("relevance_prompt", "Analyseer de relevantie: {document_text}")
-                    # #region agent log
-                    log_data2 = {
-                        "prompt_template_length": len(prompt_template),
-                        "has_placeholder": "{document_text}" in prompt_template,
-                        "placeholder_count": prompt_template.count("{document_text}"),
-                        "prompt_template_preview": prompt_template[:200]
-                    }
-                    with open(r"c:\dev\KA-database\.cursor\debug.log", "a", encoding="utf-8") as f:
-                        f.write(json_module.dumps({"location": "dashboard.py:424", "message": "Before replacement - prompt template check", "data": log_data2, "timestamp": __import__("time").time() * 1000, "runId": "run1", "hypothesisId": "B"}) + "\n")
-                    # #endregion
-                    full_prompt = prompt_template.replace("{document_text}", doc['full_text'])
-                    # #region agent log
-                    doc_start_marker = "DOCUMENT:\n"
-                    doc_start_idx = full_prompt.find(doc_start_marker)
-                    doc_after_marker = full_prompt[doc_start_idx + len(doc_start_marker):doc_start_idx + len(doc_start_marker) + 200] if doc_start_idx >= 0 else "MARKER_NOT_FOUND"
-                    log_data3 = {
-                        "full_prompt_length": len(full_prompt),
-                        "replacement_happened": full_prompt != prompt_template,
-                        "full_prompt_preview": full_prompt[:300],
-                        "doc_text_in_result": doc['full_text'][:100] in full_prompt if doc['full_text'] else False,
-                        "doc_start_marker_found": doc_start_idx >= 0,
-                        "text_after_document_marker": doc_after_marker,
-                        "full_prompt_end": full_prompt[-200:] if len(full_prompt) > 200 else full_prompt
-                    }
-                    with open(r"c:\dev\KA-database\.cursor\debug.log", "a", encoding="utf-8") as f:
-                        f.write(json_module.dumps({"location": "dashboard.py:426", "message": "After replacement - checking result", "data": log_data3, "timestamp": __import__("time").time() * 1000, "runId": "run1", "hypothesisId": "C"}) + "\n")
-                    # #endregion
-                    # Store prompt with document-specific key to avoid stale data
-                    st.session_state[f"tasks_prompt_{doc_id}"] = full_prompt
-                    # #region agent log
-                    log_data4 = {
-                        "session_state_key": f"tasks_prompt_{doc_id}",
-                        "stored_value_length": len(full_prompt),
-                        "stored_value_preview": full_prompt[:200]
-                    }
-                    with open(r"c:\dev\KA-database\.cursor\debug.log", "a", encoding="utf-8") as f:
-                        f.write(json_module.dumps({"location": "dashboard.py:428", "message": "Stored in session_state", "data": log_data4, "timestamp": __import__("time").time() * 1000, "runId": "run1", "hypothesisId": "D"}) + "\n")
-                    # #endregion
-                    st.rerun()  # Refresh to show updated prompt
-                else:
-                    # #region agent log
-                    with open(r"c:\dev\KA-database\.cursor\debug.log", "a", encoding="utf-8") as f:
-                        f.write(json_module.dumps({"location": "dashboard.py:430", "message": "No full_text available", "data": {"doc_id": doc_id, "full_text_value": str(doc.get('full_text'))}, "timestamp": __import__("time").time() * 1000, "runId": "run1", "hypothesisId": "A"}) + "\n")
-                    # #endregion
-                    st.error("Geen tekst beschikbaar om prompt mee te genereren")
-            
-            # Use document-specific key
-            tasks_prompt_key = f"tasks_prompt_{doc_id}"
-            if tasks_prompt_key in st.session_state:
-                # #region agent log
-                import json as json_module
-                stored_prompt = st.session_state[tasks_prompt_key]
-                log_data5 = {
-                    "session_state_key": tasks_prompt_key,
-                    "stored_prompt_length": len(stored_prompt),
-                    "has_placeholder": "{document_text}" in stored_prompt,
-                    "stored_prompt_preview": stored_prompt[:300],
-                    "has_doc_text": doc.get('full_text', '')[:50] in stored_prompt if doc.get('full_text') else False
-                }
-                with open(r"c:\dev\KA-database\.cursor\debug.log", "a", encoding="utf-8") as f:
-                    f.write(json_module.dumps({"location": "dashboard.py:434", "message": "Displaying prompt from session_state", "data": log_data5, "timestamp": __import__("time").time() * 1000, "runId": "run1", "hypothesisId": "E"}) + "\n")
-                # #endregion
-                char_count = len(st.session_state[tasks_prompt_key])
-                st.info(f"📊 Prompt lengte: **{char_count:,}** karakters (~{char_count // 4:,} tokens)")
-                st.text_area(
-                    "Volledige prompt (selecteer alles met Ctrl+A, kopieer met Ctrl+C):",
-                    st.session_state[tasks_prompt_key],
-                    height=400,
-                    key=f"tasks_prompt_output_{doc_id}"
-                )
-                st.caption("💡 Tip: Gebruik Ctrl+A in het tekstveld hierboven om alles te selecteren, dan Ctrl+C om te kopiëren.")
-        
-        # Input section
-        st.subheader("AI Output Invoeren")
-        st.caption("Verwacht formaat: JSON met opgave namen en scores, bijv. `{\"Wateroverlast\": 8, \"Hitte\": 5}`")
-        
-        tasks_input = st.text_area(
-            "Plak hier de AI-gegenereerde JSON:",
-            value=doc['ai_tasks_json'] or "",
-            height=200,
-            key="tasks_input"
+
+    with st.expander("Final User Message", expanded=False):
+        st.text_area(
+            "User message zoals verstuurd naar de LLM",
+            llm_user_message,
+            height=260,
+            disabled=True,
         )
-        
-        if st.button("💾 Opslaan Opgave Analyse", type="primary", key="save_tasks"):
-            if tasks_input.strip():
-                # Validate JSON
+
+    if doc["ai_summary"] or doc["ai_tasks_json"]:
+        with st.expander("Legacy AI Output", expanded=False):
+            if doc["ai_summary"]:
+                st.subheader("Samenvatting")
+                st.markdown(doc["ai_summary"])
+            if doc["ai_tasks_json"]:
+                st.subheader("Oude Opgave Analyse")
                 try:
-                    parsed = json.loads(tasks_input.strip())
-                    if isinstance(parsed, dict):
-                        # Re-serialize to ensure clean JSON
-                        clean_json = json.dumps(parsed, ensure_ascii=False, indent=2)
-                        if save_ai_tasks(doc_id, clean_json):
-                            st.success("Opgave analyse opgeslagen!")
-                            st.rerun()
-                        else:
-                            st.error("Fout bij opslaan")
+                    tasks = json.loads(doc["ai_tasks_json"])
+                    if isinstance(tasks, dict) and tasks:
+                        df = pd.DataFrame(
+                            [{"Opgave": k, "Score": v} for k, v in tasks.items()]
+                        ).sort_values("Score", ascending=False)
+                        st.dataframe(df, use_container_width=True, hide_index=True)
                     else:
-                        st.error("JSON moet een object zijn (niet een array)")
-                except json.JSONDecodeError as e:
-                    st.error(f"Ongeldige JSON: {e}")
-            else:
-                st.warning("Voer eerst JSON in")
+                        st.code(doc["ai_tasks_json"])
+                except json.JSONDecodeError:
+                    st.code(doc["ai_tasks_json"])
 
 
 # =============================================================================
@@ -1201,103 +1081,126 @@ elif page == "📡 RSS Feeds":
 
 
 elif page == "💬 Prompt Manager":
-    st.title("Prompt Manager")
-    st.write("Beheer de AI prompts voor samenvatting en opgave analyse.")
-    
-    # Load current prompts
+    st.title("Screening Prompt Studio")
+    st.write("Beheer de screening-prompts en bekijk exact welke request-shape straks naar de LLM gaat.")
+
     prompts = config.load_prompts()
-    
-    st.subheader("📝 Samenvatting Prompt")
-    st.caption("Template voor het genereren van document samenvattingen. De `{document_text}` placeholder is beschermd en kan niet worden verwijderd.")
-    
-    # Split summary prompt at {document_text}
-    summary_template = prompts.get("summary_prompt", "")
-    placeholder = "{document_text}"
-    if placeholder in summary_template:
-        summary_before, summary_after = summary_template.split(placeholder, 1)
-    else:
-        # If placeholder missing, add it at the end
-        summary_before = summary_template
-        summary_after = ""
-    
-    summary_before_edit = st.text_area(
-        "Prompt voor de documenttekst:",
-        value=summary_before,
-        height=150,
-        key="summary_before"
+
+    screening_system_context = st.text_area(
+        "1. System Context",
+        value=prompts.get("screening_system_context", ""),
+        height=180,
+        help="RVO-perspectief, klimaatadaptatie als ankerlens en interpretatiekader.",
     )
-    
-    st.text_area(
-        "Placeholder (alleen-lezen):",
-        value=placeholder,
-        height=50,
-        disabled=True,
-        key="summary_placeholder"
+    screening_task_instructions = st.text_area(
+        "2. Task Instructions",
+        value=prompts.get("screening_task_instructions", ""),
+        height=180,
+        help="Wat het model precies moet doen met de bron en welke nadruk de samenvatting moet leggen.",
     )
-    
-    summary_after_edit = st.text_area(
-        "Prompt na de documenttekst:",
-        value=summary_after,
-        height=150,
-        key="summary_after"
-    )
-    
-    # Reconstruct full prompt
-    summary_prompt = summary_before_edit + placeholder + summary_after_edit
-    
-    st.subheader("📊 Relevantie/Opgave Prompt")
-    st.caption("Template voor het analyseren van relevantie voor de 21 NAS opgaven. De `{document_text}` placeholder is beschermd en kan niet worden verwijderd.")
-    
-    # Split relevance prompt at {document_text}
-    relevance_template = prompts.get("relevance_prompt", "")
-    if placeholder in relevance_template:
-        relevance_before, relevance_after = relevance_template.split(placeholder, 1)
-    else:
-        # If placeholder missing, add it at the end
-        relevance_before = relevance_template
-        relevance_after = ""
-    
-    relevance_before_edit = st.text_area(
-        "Prompt voor de documenttekst:",
-        value=relevance_before,
+    screening_output_contract = st.text_area(
+        "3. Output Contract",
+        value=prompts.get("screening_output_contract", ""),
         height=200,
-        key="relevance_before"
+        help="Strikte JSON-outputregels en gecontroleerde labels voor opgaven en transities.",
     )
-    
-    st.text_area(
-        "Placeholder (alleen-lezen):",
-        value=placeholder,
-        height=50,
-        disabled=True,
-        key="relevance_placeholder"
-    )
-    
-    relevance_after_edit = st.text_area(
-        "Prompt na de documenttekst:",
-        value=relevance_after,
-        height=150,
-        key="relevance_after"
-    )
-    
-    # Reconstruct full prompt
-    relevance_prompt = relevance_before_edit + placeholder + relevance_after_edit
-    
-    if st.button("💾 Opslaan Prompts", type="primary"):
-        new_prompts = {
-            "summary_prompt": summary_prompt,
-            "relevance_prompt": relevance_prompt
+
+    compiled_prompt = compile_screening_system_prompt(
+        {
+            "screening_system_context": screening_system_context,
+            "screening_task_instructions": screening_task_instructions,
+            "screening_output_contract": screening_output_contract,
         }
+    )
+
+    if st.button("💾 Opslaan Screening Prompts", type="primary"):
+        new_prompts = dict(prompts)
+        new_prompts.update(
+            {
+                "screening_system_context": screening_system_context,
+                "screening_task_instructions": screening_task_instructions,
+                "screening_output_contract": screening_output_contract,
+            }
+        )
         if config.save_prompts(new_prompts):
-            st.success("Prompts opgeslagen!")
+            st.success("Screening prompts opgeslagen!")
         else:
             st.error("Fout bij opslaan prompts")
-    
-    # Preview section
-    with st.expander("👁️ Prompt Preview"):
-        st.write("Zo ziet de samenvatting prompt eruit met voorbeeld tekst:")
-        preview = summary_prompt.replace("{document_text}", "[... DOCUMENT TEKST HIER ...]")
-        st.code(preview[:500] + "..." if len(preview) > 500 else preview)
 
+    with st.expander("Compiled System Prompt", expanded=True):
+        st.text_area(
+            "Samengevoegde system prompt",
+            compiled_prompt,
+            height=320,
+            disabled=True,
+        )
+
+    st.divider()
+    st.subheader("Request Shape")
+    st.caption("De screening-call bestaat uit een system prompt, een compacte JSON user payload en een strikte JSON response.")
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.info("`system`\n\n3 prompt chunks, samengevoegd in vaste volgorde.")
+    with col2:
+        st.info("`user`\n\nReduced JSON payload met titel, bron, datum, tags en excerpt.")
+    with col3:
+        st.info("`response`\n\nStrikte JSON volgens het screeningschema.")
+
+    with st.expander("Response Schema", expanded=False):
+        st.code(json.dumps(screening_output_schema(), ensure_ascii=False, indent=2), language="json")
+
+    st.divider()
+    st.subheader("Test on Sample Document")
+
+    sample_docs = get_sample_documents()
+    if not sample_docs:
+        st.info("Geen documenten beschikbaar voor preview.")
+    else:
+        selected_index = st.selectbox(
+            "Kies een voorbeeldbron",
+            options=list(range(len(sample_docs))),
+            format_func=lambda idx: _format_sample_document_label(sample_docs[idx]),
+            index=0,
+        )
+        sample_doc = sample_docs[selected_index]
+        screening_input = build_screening_input(sample_doc)
+        llm_request = build_llm_screening_request(screening_input)
+        llm_request_json = serialize_llm_screening_request(llm_request)
+        llm_user_message = build_screening_user_message(llm_request)
+
+        meta_a, meta_b, meta_c, meta_d = st.columns(4)
+        with meta_a:
+            st.metric("Document ID", sample_doc["id"])
+        with meta_b:
+            st.metric("Bron", sample_doc.get("source_name") or "Onbekend")
+        with meta_c:
+            st.metric("Excerpt strategie", screening_input.excerpt_strategy)
+        with meta_d:
+            st.metric("Woorden", count_words(screening_input.excerpt_text))
+
+        with st.expander("Excerpt Preview", expanded=True):
+            st.text_area(
+                "Excerpt dat door de builder is geselecteerd",
+                screening_input.excerpt_text,
+                height=300,
+                disabled=True,
+            )
+
+        with st.expander("LLM Input JSON", expanded=False):
+            st.text_area(
+                "Reduced request object",
+                llm_request_json,
+                height=220,
+                disabled=True,
+            )
+
+        with st.expander("Final User Message", expanded=False):
+            st.text_area(
+                "User message zoals die naar de LLM zou gaan",
+                llm_user_message,
+                height=260,
+                disabled=True,
+            )
 
 elif page == "▶️ Pipeline":
     st.title("Pipeline Uitvoeren")

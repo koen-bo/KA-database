@@ -45,6 +45,9 @@ class Document(Base):
     
     # Content
     full_text: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    cleaned_text: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    cleaned_text_updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    cleaned_text_version: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     
     # Processing status
     processing_status: Mapped[str] = mapped_column(String(50), default="new")  # 'new', 'analyzed', 'failed'
@@ -116,6 +119,12 @@ def _ensure_schema_columns() -> None:
             conn.execute(text("ALTER TABLE documents ADD COLUMN keyword_tags TEXT;"))
         if "thumbnail_url" not in existing_columns:
             conn.execute(text("ALTER TABLE documents ADD COLUMN thumbnail_url TEXT;"))
+        if "cleaned_text" not in existing_columns:
+            conn.execute(text("ALTER TABLE documents ADD COLUMN cleaned_text TEXT;"))
+        if "cleaned_text_updated_at" not in existing_columns:
+            conn.execute(text("ALTER TABLE documents ADD COLUMN cleaned_text_updated_at DATETIME;"))
+        if "cleaned_text_version" not in existing_columns:
+            conn.execute(text("ALTER TABLE documents ADD COLUMN cleaned_text_version TEXT;"))
 
 
 def url_exists(url: str) -> bool:
@@ -188,6 +197,19 @@ def update_document_tags(doc_id: int, keyword_tags_json: str) -> bool:
         return True
 
 
+def update_document_cleaned_text(doc_id: int, cleaned_text: str, version: str) -> bool:
+    """Update cleaned text fields for a single document. Returns True when updated."""
+    with get_session() as session:
+        doc = session.query(Document).filter(Document.id == doc_id).first()
+        if not doc:
+            return False
+        doc.cleaned_text = cleaned_text
+        doc.cleaned_text_updated_at = datetime.now()
+        doc.cleaned_text_version = version
+        session.commit()
+        return True
+
+
 def iter_documents_for_tag_backfill(
     since_id: int = 0,
     limit: Optional[int] = None,
@@ -195,6 +217,34 @@ def iter_documents_for_tag_backfill(
 ):
     """
     Yield documents in deterministic ID order for tag backfill.
+    """
+    emitted = 0
+    with get_session() as session:
+        query = (
+            session.query(Document)
+            .filter(Document.id > since_id)
+            .order_by(Document.id.asc())
+        )
+        if limit is not None and limit >= 0:
+            query = query.limit(limit)
+
+        if batch_size <= 0:
+            batch_size = 200
+
+        for doc in query.yield_per(batch_size):
+            yield doc
+            emitted += 1
+            if limit is not None and limit >= 0 and emitted >= limit:
+                break
+
+
+def iter_documents_for_cleaned_text_backfill(
+    since_id: int = 0,
+    limit: Optional[int] = None,
+    batch_size: int = 200,
+):
+    """
+    Yield documents in deterministic ID order for cleaned text backfill.
     """
     emitted = 0
     with get_session() as session:
