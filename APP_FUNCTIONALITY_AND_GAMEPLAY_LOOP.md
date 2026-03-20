@@ -1,10 +1,10 @@
 ﻿# App Functionality and Gameplay Loop
 
 ## Functional Overview (Current State)
-The app operates as a document intelligence workflow with automated ingestion and manual AI analysis completion:
+The app operates as a document intelligence workflow with automated ingestion, deterministic screening preparation, and operator inspection tools:
 - Automated ingestion: sources are discovered via `rss`, `sitemap`, and `listing` methods, entries are filtered by tiered relevance rules, content is fetched/extracted, and new documents are stored in SQLite.
-- Operator UI (Streamlit): users browse and filter documents (including keyword tags), inspect full text and PDFs, edit keywords/prompts, inspect source config, and trigger ingestion/refetch/backfill jobs.
-- Human-in-the-loop AI: the dashboard generates prompts from document text, an operator runs an external AI tool manually, then pastes summary/JSON results back into the app.
+- Deterministic screening preparation: stored source text can be cleaned/backfilled into `cleaned_text`, excerpted with rule-based logic, and converted into a compact LLM request shape without calling an LLM yet.
+- Operator UI (Streamlit): users browse and filter documents (including keyword tags), inspect full text and PDFs, preview screening excerpts/request payloads, edit screening prompts, inspect source config, and trigger ingestion/refetch/backfill jobs.
 
 ## Core Functional Areas
 
@@ -63,14 +63,39 @@ The app operates as a document intelligence workflow with automated ingestion an
   - active filter summary + reset (`Wis filters`).
 - Source management page shows multi-source configuration loaded via `load_sources_with_status()`.
 - Pipeline page can run ingestion and PDF refetch and display runtime metrics.
-- Prompt workflow remains manual human-in-the-loop for summary and task scoring.
+- Prompt Studio:
+  - edits the 3 screening prompt chunks from `prompts.json`
+  - shows the compiled system prompt
+  - shows the response schema
+  - lets the operator test the exact screening request shape on a sample document.
+- Document detail page shows:
+  - full text preview
+  - PDF availability
+  - screening preview (`excerpt_text`, reduced LLM input JSON, final user message)
+  - legacy stored AI output only in a collapsed section, for backward compatibility.
 
-### 6. Backfill Operations
+### 6. Screening Preparation
+- Implemented in `modules/screening.py`.
+- Step 1 cleanup:
+  - normalizes and cleans HTML, PDF, and merged HTML+PDF text
+  - preserves the stable delimiter `"[PDF EXTRACT]"`
+  - stores cleaned output in `documents.cleaned_text`
+- Step 2 payload construction:
+  - selects deterministic excerpts from cleaned text
+  - uses `keyword_tags`, content type, and PDF heading/keyword heuristics
+  - builds a reduced `LLMScreeningRequest` for later API use
+  - compiles a structured request shape (`system` prompt + JSON user message).
+
+### 7. Backfill Operations
 - PDF backfill:
   - `python refetch_pdfs.py`
 - Keyword-tag backfill:
   - `python backfill_tags.py --dry-run`
   - `python backfill_tags.py --only-missing`
+  - supports `--limit`, `--since-id`, `--batch-size` for controlled rollout.
+- Cleaned-text backfill:
+  - `python backfill_cleaned_text.py --dry-run`
+  - `python backfill_cleaned_text.py --only-missing`
   - supports `--limit`, `--since-id`, `--batch-size` for controlled rollout.
 
 ## Gameplay Loop (Operator Loop)
@@ -78,11 +103,10 @@ The app operates as a document intelligence workflow with automated ingestion an
 2. Run ingestion via pipeline page (or external `python main.py`).
 3. Open document browser and filter to relevant/new documents (including tag filtering when useful).
 4. Open a specific document detail page.
-5. Generate summary/task prompts from `full_text`.
-6. Run external AI tool manually with copied prompt text.
-7. Paste generated summary and tasks JSON into dashboard fields.
-8. Save outputs to DB; once both summary and task JSON exist, status becomes `analyzed`.
-9. Repeat for remaining documents; optionally run backfill jobs.
+5. Inspect the screening preview generated from cleaned text and deterministic excerpt selection.
+6. Open Prompt Studio to tune screening prompts and test the exact request shape on sample documents.
+7. Use the resulting prompt/request contract for external LLM testing or future batch screening integration.
+8. Repeat for remaining documents; optionally run backfill jobs.
 
 ## State Model
 - `new`
@@ -121,6 +145,8 @@ The app operates as a document intelligence workflow with automated ingestion an
   - `KA_DATA_DIR`
   - `KA_SOURCES_FILE` (preferred)
   - `KA_FEEDS_FILE` (legacy fallback)
+  - `KA_DASHBOARD_USERNAME`
+  - `KA_DASHBOARD_PASSWORD`
   - `KA_MAX_CANDIDATES_PER_SOURCE`
   - `KA_MAX_AGE_DAYS_SITEMAP_LISTING`
   - `KA_MAX_SITEMAP_URLS_PER_SOURCE`
@@ -128,4 +154,4 @@ The app operates as a document intelligence workflow with automated ingestion an
   - `KA_MAX_LISTING_PAGES_PER_SOURCE`
   - `KA_MAX_ENTRIES_PER_FEED`
 - Database contract:
-  - `documents` table includes source metadata, discovery metadata, extracted content, keyword tags (`keyword_tags`), and manual AI output fields.
+  - `documents` table includes source metadata, discovery metadata, extracted content, cleaned screening text (`cleaned_text`, version/timestamp), keyword tags (`keyword_tags`), and legacy manual AI output fields.

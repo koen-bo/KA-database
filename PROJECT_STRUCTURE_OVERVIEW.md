@@ -3,7 +3,7 @@
 ## What This Repository Is
 - A Python-based climate adaptation knowledge base focused on Dutch policy/governance and related evidence sources.
 - A batch ingestion pipeline (`main.py`) that discovers from `rss`, `sitemap`, and `listing` sources, filters relevance, extracts content, tags keywords, and stores documents.
-- A Streamlit operations UI (`dashboard.py`) for browsing docs, filtering (including tags), editing config, running jobs, and completing manual AI analysis.
+- A Streamlit operations UI (`dashboard.py`) for browsing docs, filtering (including tags), editing screening prompts/config, previewing screening payloads, and running jobs.
 - Local persistence with SQLite (`kennisbank.db`) and local `pdfs/` storage.
 
 ## Top-Level Directory Map
@@ -53,9 +53,11 @@ KA-database/
 | `modules/discovery_listing.py` | Listing-page candidate discovery | Listing source config + selector templates | Candidate list | HTTP/HTML parsing + pagination |
 | `modules/filter.py` | Tiered relevance + keyword tag extraction | Candidate/document text + keyword/context lists | `FilterResult`, keyword tags | No persistent writes |
 | `modules/fetcher.py` | URL content retrieval/extraction | URL, source name, title | `FetchResult` (`text`,`type`,`file_path`) | HTTP requests, HTML extraction, PDF downloads, merged article+PDF text for HTML pages with linked PDFs |
+| `modules/screening.py` | Deterministic screening preparation | `full_text`, `cleaned_text`, content metadata, keyword tags, prompts | Cleaned text, excerpt payloads, LLM request shape, response validation helpers | No external API calls; no persistent writes by itself |
 | `modules/database.py` | SQLAlchemy model/session utilities | `config.DATABASE_PATH`, document payloads | `Document` records + helper queries | Creates/migrates tables; DB reads/writes |
 | `refetch_pdfs.py` | Backfill missing PDFs for existing rows | Existing docs without local PDF path | Updated rows | Downloads/stores PDFs; DB updates |
 | `backfill_tags.py` | Backfill/recompute keyword tags for existing rows | Existing docs + keyword files | Updated `keyword_tags` values + run stats | DB updates; optional dry-run |
+| `backfill_cleaned_text.py` | Backfill deterministic screening text cleanup | Existing docs + stored `full_text` | Updated `cleaned_text` values + run stats | DB updates; optional dry-run |
 
 ## Runtime Data and Persistence
 - Database file: `kennisbank.db` (`config.DATABASE_PATH`).
@@ -65,8 +67,9 @@ KA-database/
   - fetched artifacts (`content_type`, `local_file_path`, `full_text`, `fetched_at`)
     - HTML pages with linked PDFs store article text plus appended PDF text in `full_text`, keep `content_type='html'`, and set `local_file_path`.
     - Direct PDF URLs store PDF-only text with `content_type='pdf'`.
+  - screening-prep artifacts (`cleaned_text`, `cleaned_text_updated_at`, `cleaned_text_version`)
   - keyword tags (`keyword_tags` JSON array with all matched Tier 1/Tier 2 keywords)
-  - processing and AI fields (`processing_status`, `is_relevant`, `ai_summary`, `ai_tasks_json`)
+  - processing and legacy AI fields (`processing_status`, `is_relevant`, `ai_summary`, `ai_tasks_json`)
 - PDF storage: `<KA_DATA_DIR or BASE_DIR>/pdfs`.
 - Ingestion lock file: `<KA_DATA_DIR>/ingestion.lock`.
 
@@ -92,6 +95,9 @@ KA-database/
 - Keyword tag backfill:
   - `python backfill_tags.py --dry-run`
   - `python backfill_tags.py --only-missing`
+- Cleaned text backfill:
+  - `python backfill_cleaned_text.py --dry-run`
+  - `python backfill_cleaned_text.py --only-missing`
 
 ## Dashboard Authentication
 - The dashboard requires login credentials from environment variables:
@@ -121,10 +127,14 @@ flowchart TD
     B --> L
     B --> M[tier1/tier2/context files]
     B --> N[prompts.json]
+    B --> S[modules.screening helpers]
     B --> O[subprocess: python main.py]
     B --> P[subprocess: python refetch_pdfs.py]
+    B --> U[subprocess: python backfill_cleaned_text.py]
     P --> I
     P --> L
+    U --> S
+    U --> L
 
     T --> H
     T --> Q[modules.database.update_document_tags]
