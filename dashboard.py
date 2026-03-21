@@ -18,8 +18,10 @@ import os
 import re
 import subprocess
 import textwrap
+import hashlib
 from base64 import b64encode
 from datetime import datetime, timedelta
+from urllib.parse import quote_plus
 
 import pandas as pd
 import streamlit as st
@@ -173,6 +175,98 @@ st.markdown("""
         gap: 10px;
     }
 }
+.detail-hero {
+    border: 1px solid #e7edf3;
+    border-radius: 18px;
+    background: linear-gradient(180deg, #fbfdff 0%, #f4f8fb 100%);
+    padding: 20px 22px;
+    margin-bottom: 16px;
+}
+.detail-meta-row {
+    color: #607489;
+    font-size: 14px;
+    line-height: 1.5;
+    margin-top: 6px;
+}
+.detail-url {
+    color: #2f72c6;
+    text-decoration: none;
+    word-break: break-word;
+}
+.detail-summary-card {
+    border: 1px solid #e7edf3;
+    border-radius: 18px;
+    background: #ffffff;
+    padding: 18px 20px;
+    margin-bottom: 16px;
+    box-shadow: 0 2px 10px rgba(12, 24, 36, 0.04);
+}
+.detail-section-card {
+    border: 1px solid #e7edf3;
+    border-radius: 18px;
+    background: #ffffff;
+    padding: 18px 20px;
+    margin-bottom: 16px;
+    box-shadow: 0 2px 10px rgba(12, 24, 36, 0.04);
+}
+.detail-thumb {
+    width: 100%;
+    max-width: 280px;
+    aspect-ratio: 16 / 10;
+    object-fit: cover;
+    border-radius: 16px;
+    border: 1px solid #d9e3ee;
+    display: block;
+    margin-left: auto;
+}
+.score-badge {
+    display: inline-block;
+    padding: 6px 12px;
+    border-radius: 999px;
+    font-size: 13px;
+    font-weight: 700;
+    margin-bottom: 10px;
+}
+.score-high {
+    background: #e8f7ef;
+    color: #1c6b43;
+}
+.score-medium {
+    background: #fff4df;
+    color: #9a6500;
+}
+.score-low {
+    background: #fbeaea;
+    color: #9a2f2f;
+}
+.tag-pill {
+    display: inline-block;
+    padding: 6px 10px;
+    border-radius: 999px;
+    background: #eef5fb;
+    color: #244864;
+    font-size: 13px;
+    font-weight: 600;
+    margin-right: 8px;
+    margin-bottom: 8px;
+}
+.tag-pill-muted {
+    background: #f3f5f7;
+    color: #56687a;
+}
+.detail-kicker {
+    color: #6b7f93;
+    font-size: 13px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    margin-bottom: 8px;
+}
+.detail-note {
+    color: #64788d;
+    font-size: 14px;
+    margin-top: 6px;
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -207,6 +301,74 @@ def ensure_auth_state_initialized() -> None:
         st.session_state.authenticated = False
     if "auth_username" not in st.session_state:
         st.session_state.auth_username = ""
+    if "auth_token" not in st.session_state:
+        st.session_state.auth_token = ""
+
+
+def _get_auth_signing_secret() -> str:
+    """Return secret material for signing lightweight auth tokens."""
+    username, password = get_auth_config()
+    return f"{username or ''}:{password or ''}"
+
+
+def build_auth_token(username: str, expires_at: datetime | None = None) -> str:
+    """Build a signed auth token suitable for query-param persistence."""
+    if not expires_at:
+        expires_at = datetime.utcnow() + timedelta(days=30)
+    expiry = expires_at.strftime("%Y%m%d%H%M%S")
+    payload = f"{username}|{expiry}"
+    signature = hmac.new(
+        _get_auth_signing_secret().encode("utf-8"),
+        payload.encode("utf-8"),
+        hashlib.sha256,
+    ).hexdigest()
+    return f"{expiry}.{signature[:24]}"
+
+
+def validate_auth_token(token: str | None) -> str | None:
+    """Validate a signed auth token and return the username when valid."""
+    if not token:
+        return None
+    try:
+        expiry, signature = str(token).split(".", 1)
+    except ValueError:
+        return None
+    configured_username, _ = get_auth_config()
+    username = configured_username or ""
+    payload = f"{username}|{expiry}"
+    expected = hmac.new(
+        _get_auth_signing_secret().encode("utf-8"),
+        payload.encode("utf-8"),
+        hashlib.sha256,
+    ).hexdigest()[:24]
+    if not hmac.compare_digest(signature, expected):
+        return None
+    try:
+        expires_at = datetime.strptime(expiry, "%Y%m%d%H%M%S")
+    except ValueError:
+        return None
+    if datetime.utcnow() > expires_at:
+        return None
+    if configured_username and username != configured_username:
+        return None
+    return username
+
+
+def restore_auth_from_query_params() -> None:
+    """Restore auth state from signed query param when present."""
+    if st.session_state.get("authenticated"):
+        return
+    token = st.query_params.get("a")
+    username = validate_auth_token(token)
+    if username:
+        st.session_state.authenticated = True
+        st.session_state.auth_username = username
+        st.session_state.auth_token = str(token)
+    elif token:
+        try:
+            del st.query_params["a"]
+        except Exception:
+            pass
 
 
 def render_login_screen() -> None:
@@ -223,6 +385,9 @@ def render_login_screen() -> None:
         if check_credentials(username, password):
             st.session_state.authenticated = True
             st.session_state.auth_username = username
+            token = build_auth_token(username)
+            st.session_state.auth_token = token
+            st.query_params["a"] = token
             st.rerun()
         else:
             st.error("Onjuiste gebruikersnaam of wachtwoord.")
@@ -233,6 +398,12 @@ def render_logout_control() -> None:
     if st.sidebar.button("Uitloggen"):
         st.session_state.authenticated = False
         st.session_state.auth_username = ""
+        st.session_state.auth_token = ""
+        for key in ("a", "open_doc"):
+            try:
+                del st.query_params[key]
+            except Exception:
+                pass
         st.rerun()
 
 
@@ -333,6 +504,62 @@ def build_card_summary(full_text: str | None, source_name: str = "", publication
         if len(cleaned) > 220:
             summary += "..."
     return summary
+
+
+def parse_screening_output(raw: str | None) -> dict | None:
+    """Parse stored screening JSON safely for detail rendering."""
+    if not raw:
+        return None
+    try:
+        data = json.loads(raw)
+    except Exception:
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def format_detail_date(value: datetime | None) -> str:
+    """Format a date or datetime for detail screens."""
+    if not value:
+        return "Onbekend"
+    try:
+        return value.strftime("%d-%m-%Y")
+    except Exception:
+        return "Onbekend"
+
+
+def get_score_badge_class(score: int | None) -> str:
+    """Return CSS class for relevance score badge."""
+    if score is None:
+        return "score-medium"
+    if score >= 8:
+        return "score-high"
+    if score >= 5:
+        return "score-medium"
+    return "score-low"
+
+
+def get_score_interpretation(score: int | None) -> str:
+    """Return short interpretation line for the RVO relevance score."""
+    if score is None:
+        return "Nog geen screeningsscore beschikbaar."
+    if score >= 9:
+        return "Zeer relevant voor RVO's klimaatadaptatie-opgave."
+    if score >= 7:
+        return "Duidelijk relevant voor RVO, maar niet de meest directe uitvoeringsrol."
+    if score >= 4:
+        return "Inhoudelijk relevant, maar vaak meer voor andere publieke partijen dan voor RVO."
+    if score >= 1:
+        return "Slechts beperkt relevant voor RVO's klimaatadaptatie-opgave."
+    return "Niet relevant voor RVO's klimaatadaptatie-opgave."
+
+
+def render_tag_pills(values: list[str], muted: bool = False) -> None:
+    """Render compact tag pills for opgaven/transities."""
+    if not values:
+        return
+    pill_class = "tag-pill tag-pill-muted" if muted else "tag-pill"
+    pills = "".join([f"<span class='{pill_class}'>{html.escape(value)}</span>" for value in values])
+    st.markdown(pills, unsafe_allow_html=True)
 
 
 @st.cache_data(ttl=86400, show_spinner=False)
@@ -484,6 +711,13 @@ def get_document_details(doc_id: int) -> dict:
                 "cleaned_text": doc.cleaned_text,
                 "processing_status": doc.processing_status,
                 "is_relevant": doc.is_relevant,
+                "screening_status": doc.screening_status,
+                "screening_requested_at": doc.screening_requested_at,
+                "screened_at": doc.screened_at,
+                "screening_model": doc.screening_model,
+                "screening_input_json": doc.screening_input_json,
+                "screening_output_json": doc.screening_output_json,
+                "screening_error": doc.screening_error,
                 "ai_summary": doc.ai_summary,
                 "ai_tasks_json": doc.ai_tasks_json,
             }
@@ -568,6 +802,10 @@ def render_card(doc: dict) -> str:
         tags_html += f"<span class='card-tag card-tag-overflow'>+{overflow}</span>"
 
     doc_id = int(doc["id"])
+    auth_token = st.session_state.get("auth_token")
+    href = f"?open_doc={doc_id}"
+    if auth_token:
+        href += f"&a={quote_plus(str(auth_token))}"
     return textwrap.dedent(f"""
     <article class="card-shell">
         <img class="card-thumb" src="{html.escape(thumb_url)}" alt="thumbnail">
@@ -578,7 +816,7 @@ def render_card(doc: dict) -> str:
             <div class="card-summary">{html.escape(summary)}</div>
         </div>
         <div class="card-cta-wrap">
-            <a class="card-cta" href="?open_doc={doc_id}" target="_self">
+            <a class="card-cta" href="{href}" target="_self">
                 <span>details</span>
                 <span class="card-cta-icon">&#8250;</span>
             </a>
@@ -605,151 +843,252 @@ def consume_open_doc_query_param() -> None:
         return
     st.session_state.selected_doc_id = doc_id
     st.session_state.show_detail = True
+    st.session_state.detail_subview = "main"
+    st.session_state.detail_advanced_focus = None
     del st.query_params["open_doc"]
     st.rerun()
 
 
 def render_document_detail(doc_id: int):
-    """Render the full document detail view with screening preview."""
+    """Render the document detail view with reader-first main screen and advanced subview."""
     doc = get_document_details(doc_id)
     if not doc:
         st.error(f"Document {doc_id} niet gevonden")
         return
-    
-    # Back button
+
+    detail_view = st.session_state.get("detail_subview", "main")
+    advanced_focus = st.session_state.get("detail_advanced_focus")
+    screening_output = parse_screening_output(doc.get("screening_output_json"))
+    thumbnail_url = doc.get("thumbnail_url") or get_placeholder_image_data_uri()
+    source_label = doc.get("source_name") or "Onbekende bron"
+    publication_label = format_detail_date(doc.get("publication_date"))
+    score = screening_output.get("climate_adaptation_relevance_score") if screening_output else None
+    score_badge_class = get_score_badge_class(score)
+
     if st.button("← Terug naar overzicht"):
         st.session_state.show_detail = False
+        st.session_state.detail_subview = "main"
+        st.session_state.detail_advanced_focus = None
         st.rerun()
-    
-    st.header(doc['title'] or "Geen titel")
-    
-    # Meta info
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        st.write(f"**Bron:** {doc['source_name']}")
-        st.write(f"**Type:** {doc['content_type']}")
-    with col2:
-        st.write(f"**Opgehaald:** {doc['fetched_at'].strftime('%d-%m-%Y %H:%M') if doc['fetched_at'] else 'Onbekend'}")
-        st.write(f"**Status:** {doc['processing_status']}")
-    with col3:
-        st.write(f"**URL:** [{doc['url'][:40]}...]({doc['url']})")
-    
-    # PDF section
-    st.subheader("📄 Document Bestand")
-    if doc['local_file_path']:
-        st.success(f"PDF beschikbaar: `{doc['local_file_path']}`")
-        if os.path.exists(doc['local_file_path']):
-            with open(doc['local_file_path'], "rb") as f:
-                st.download_button(
-                    "⬇️ Download PDF",
-                    f.read(),
-                    file_name=os.path.basename(doc['local_file_path']),
-                    mime="application/pdf"
+
+    if detail_view == "advanced":
+        top_cols = st.columns([1, 1, 4])
+        with top_cols[0]:
+            if st.button("← Hoofdweergave", use_container_width=True):
+                st.session_state.detail_subview = "main"
+                st.session_state.detail_advanced_focus = None
+                st.rerun()
+        with top_cols[1]:
+            if doc.get("local_file_path") and os.path.exists(doc["local_file_path"]):
+                with open(doc["local_file_path"], "rb") as f:
+                    st.download_button(
+                        "⬇️ PDF",
+                        f.read(),
+                        file_name=os.path.basename(doc["local_file_path"]),
+                        mime="application/pdf",
+                        use_container_width=True,
+                    )
+        st.subheader("Advanced")
+        st.caption("Technische screeningweergave en broninspectie.")
+
+        screening_input = build_screening_input(doc)
+        llm_request = build_llm_screening_request(screening_input)
+        llm_request_json = serialize_llm_screening_request(llm_request)
+        llm_user_message = build_screening_user_message(llm_request)
+
+        col_a, col_b, col_c, col_d = st.columns(4)
+        with col_a:
+            st.metric("Screening status", doc.get("screening_status") or "niet gestart")
+        with col_b:
+            st.metric("Model", doc.get("screening_model") or "onbekend")
+        with col_c:
+            st.metric("Excerpt woorden", count_words(screening_input.excerpt_text))
+        with col_d:
+            confidence_value = screening_output.get("confidence") if screening_output else None
+            st.metric("Confidence", f"{confidence_value:.2f}" if isinstance(confidence_value, (int, float)) else "n.v.t.")
+
+        with st.expander("Volledige tekst", expanded=advanced_focus == "full_text"):
+            if doc['full_text']:
+                st.text_area("Volledige tekst", doc['full_text'][:20000], height=360, disabled=True)
+                if len(doc['full_text']) > 20000:
+                    st.caption(f"... en nog {len(doc['full_text']) - 20000} karakters")
+            else:
+                st.info("Geen tekst beschikbaar.")
+
+        with st.expander("PDF", expanded=advanced_focus == "pdf"):
+            if doc['local_file_path']:
+                st.success(f"PDF beschikbaar: `{doc['local_file_path']}`")
+                if os.path.exists(doc['local_file_path']):
+                    with open(doc['local_file_path'], "rb") as f:
+                        st.download_button(
+                            "⬇️ Download PDF",
+                            f.read(),
+                            file_name=os.path.basename(doc['local_file_path']),
+                            mime="application/pdf"
+                        )
+            else:
+                st.info("Geen PDF gekoppeld aan dit document.")
+
+        with st.expander("Screening excerpt preview", expanded=advanced_focus == "excerpt"):
+            if screening_input.excerpt_text:
+                st.text_area(
+                    "Geselecteerde screeningtekst",
+                    screening_input.excerpt_text,
+                    height=320,
+                    disabled=True,
                 )
-    else:
-        st.warning("Geen PDF gekoppeld aan dit document")
-        if st.button("🔍 Probeer PDF te vinden", key=f"refetch_{doc_id}"):
-            with st.spinner("Zoeken naar PDF op pagina..."):
-                fetcher = ContentFetcher()
-                result = fetcher.fetch(doc['url'], doc['source_name'] or "Onbekend", doc['title'] or "")
-                
-                if result and result["file_path"]:
-                    with get_session() as session:
-                        db_doc = session.query(Document).filter(Document.id == doc_id).first()
-                        if db_doc:
-                            db_doc.content_type = result["type"]
-                            db_doc.local_file_path = result["file_path"]
-                            if result.get("thumbnail_url"):
-                                db_doc.thumbnail_url = result["thumbnail_url"]
-                            db_doc.full_text = result["text"]
-                            session.commit()
-                    
-                    st.success(f"PDF gevonden en opgeslagen: {result['file_path']}")
-                    st.rerun()
-                else:
-                    st.info("Geen PDF downloadlink gevonden op deze pagina")
-    
-    # Text preview
-    with st.expander("📜 Volledige Tekst Voorvertoning", expanded=False):
-        if doc['full_text']:
-            st.text_area("", doc['full_text'][:10000], height=300, disabled=True)
-            if len(doc['full_text']) > 10000:
-                st.caption(f"... en nog {len(doc['full_text']) - 10000} karakters")
-        else:
-            st.info("Geen tekst beschikbaar")
-    
-    st.divider()
-    
-    # ==========================================================================
-    # SCREENING PREVIEW
-    # ==========================================================================
-    st.header("Screening Preview")
-    st.caption("Voorbeeld van wat deze bron in de screening-pipeline aan de LLM zou sturen.")
+            else:
+                st.info("Geen excerpt beschikbaar.")
 
-    screening_input = build_screening_input(doc)
-    llm_request = build_llm_screening_request(screening_input)
-    llm_request_json = serialize_llm_screening_request(llm_request)
-    llm_user_message = build_screening_user_message(llm_request)
-
-    col_a, col_b, col_c = st.columns(3)
-    with col_a:
-        st.metric("Excerpt strategie", screening_input.excerpt_strategy)
-    with col_b:
-        st.metric("Excerpt woorden", count_words(screening_input.excerpt_text))
-    with col_c:
-        st.metric("Keyword tags", len(screening_input.keyword_tags))
-
-    with st.expander("Excerpt Preview", expanded=True):
-        if screening_input.excerpt_text:
+        with st.expander("LLM input JSON", expanded=advanced_focus == "llm_json"):
             st.text_area(
-                "Geselecteerde screeningtekst",
-                screening_input.excerpt_text,
-                height=320,
+                "Reduced request object",
+                llm_request_json,
+                height=220,
                 disabled=True,
             )
-        else:
-            st.info("Geen excerpt beschikbaar.")
 
-    with st.expander("LLM Input JSON", expanded=False):
-        st.text_area(
-            "Reduced request object",
-            llm_request_json,
-            height=220,
-            disabled=True,
-        )
+        with st.expander("Final user message", expanded=advanced_focus == "user_message"):
+            st.text_area(
+                "User message zoals verstuurd naar de LLM",
+                llm_user_message,
+                height=260,
+                disabled=True,
+            )
 
-    with st.expander("Final User Message", expanded=False):
-        st.text_area(
-            "User message zoals verstuurd naar de LLM",
-            llm_user_message,
-            height=260,
-            disabled=True,
-        )
+        if doc.get("screened_at") or doc.get("screening_error"):
+            with st.expander("Screening metadata", expanded=advanced_focus == "metadata"):
+                st.write(f"**Status:** {doc.get('screening_status') or 'niet gestart'}")
+                st.write(f"**Model:** {doc.get('screening_model') or 'onbekend'}")
+                st.write(f"**Aangevraagd:** {doc['screening_requested_at'].strftime('%d-%m-%Y %H:%M') if doc.get('screening_requested_at') else 'Onbekend'}")
+                st.write(f"**Gescreend:** {doc['screened_at'].strftime('%d-%m-%Y %H:%M') if doc.get('screened_at') else 'Onbekend'}")
+                if doc.get("screening_error"):
+                    st.error(doc["screening_error"])
 
-    if doc["ai_summary"] or doc["ai_tasks_json"]:
-        with st.expander("Legacy AI Output", expanded=False):
-            if doc["ai_summary"]:
-                st.subheader("Samenvatting")
-                st.markdown(doc["ai_summary"])
-            if doc["ai_tasks_json"]:
-                st.subheader("Oude Opgave Analyse")
-                try:
-                    tasks = json.loads(doc["ai_tasks_json"])
-                    if isinstance(tasks, dict) and tasks:
-                        df = pd.DataFrame(
-                            [{"Opgave": k, "Score": v} for k, v in tasks.items()]
-                        ).sort_values("Score", ascending=False)
-                        st.dataframe(df, use_container_width=True, hide_index=True)
-                    else:
+        if doc["ai_summary"] or doc["ai_tasks_json"]:
+            with st.expander("Legacy AI Output", expanded=False):
+                if doc["ai_summary"]:
+                    st.subheader("Samenvatting")
+                    st.markdown(doc["ai_summary"])
+                if doc["ai_tasks_json"]:
+                    st.subheader("Oude Opgave Analyse")
+                    try:
+                        tasks = json.loads(doc["ai_tasks_json"])
+                        if isinstance(tasks, dict) and tasks:
+                            df = pd.DataFrame(
+                                [{"Opgave": k, "Score": v} for k, v in tasks.items()]
+                            ).sort_values("Score", ascending=False)
+                            st.dataframe(df, use_container_width=True, hide_index=True)
+                        else:
+                            st.code(doc["ai_tasks_json"])
+                    except json.JSONDecodeError:
                         st.code(doc["ai_tasks_json"])
-                except json.JSONDecodeError:
-                    st.code(doc["ai_tasks_json"])
+        return
+
+    header_cols = st.columns([4.2, 1.3], gap="large")
+    with header_cols[0]:
+        st.title(doc['title'] or "Geen titel")
+        st.caption(f"{source_label} · {publication_label} · {doc.get('content_type') or 'onbekend'}")
+        if doc.get("url"):
+            st.markdown(f"[{doc['url']}]({doc['url']})")
+        action_cols = st.columns([1, 1, 0.9])
+        with action_cols[0]:
+            if st.button("Bekijk volledige tekst", use_container_width=True):
+                st.session_state.detail_subview = "advanced"
+                st.session_state.detail_advanced_focus = "full_text"
+                st.rerun()
+        with action_cols[1]:
+            if st.button("Bekijk PDF", disabled=not bool(doc.get("local_file_path")), use_container_width=True):
+                st.session_state.detail_subview = "advanced"
+                st.session_state.detail_advanced_focus = "pdf"
+                st.rerun()
+        with action_cols[2]:
+            if st.button("Advanced", use_container_width=True):
+                st.session_state.detail_subview = "advanced"
+                st.session_state.detail_advanced_focus = None
+                st.rerun()
+    with header_cols[1]:
+        st.image(thumbnail_url, width=250)
+
+    summary_text = None
+    explanation_text = None
+    primary_opgave = None
+    related_opgaves: list[str] = []
+    related_transities: list[str] = []
+    cross_signal = "none"
+    cross_explanation = "none"
+    if screening_output:
+        summary_text = screening_output.get("short_summary")
+        explanation_text = screening_output.get("climate_adaptation_explanation")
+        primary_opgave = screening_output.get("primary_opgave")
+        related_opgaves = screening_output.get("related_opgaves") or []
+        related_transities = screening_output.get("related_transities") or []
+        cross_signal = screening_output.get("cross_domain_relevance_signal") or "none"
+        cross_explanation = screening_output.get("cross_domain_explanation") or "none"
+
+    st.markdown("---")
+
+    if screening_output:
+        summary_cols = st.columns([2.8, 1.2], gap="large")
+        with summary_cols[0]:
+            st.markdown("<div class='detail-kicker'>Korte samenvatting</div>", unsafe_allow_html=True)
+            st.write(summary_text)
+        with summary_cols[1]:
+            st.metric("Klimaatadaptatie relevantie", f"{score}/10")
+            st.markdown(
+                f"<span class='score-badge {score_badge_class}'>{html.escape(get_score_interpretation(score))}</span>",
+                unsafe_allow_html=True,
+            )
+            confidence_value = screening_output.get("confidence")
+            if isinstance(confidence_value, (int, float)):
+                st.caption(f"Confidence: {confidence_value:.2f}")
+    else:
+        st.info("Nog geen screeningsresultaat beschikbaar voor dit document.")
+
+    st.markdown("---")
+
+    main_cols = st.columns([2.0, 1], gap="large")
+    with main_cols[0]:
+        st.subheader("Waarom relevant?")
+        if explanation_text:
+            st.write(explanation_text)
+        else:
+            st.write("Nog geen toelichting beschikbaar.")
+
+        st.markdown("")
+        st.subheader("Relevantie voor andere opgaven en transities")
+        if primary_opgave:
+            st.markdown("<div class='detail-kicker'>Primaire opgave</div>", unsafe_allow_html=True)
+            render_tag_pills([primary_opgave])
+        if related_opgaves:
+            st.markdown("<div class='detail-kicker'>Gerelateerde opgaven</div>", unsafe_allow_html=True)
+            render_tag_pills(related_opgaves)
+        if related_transities:
+            st.markdown("<div class='detail-kicker'>Gerelateerde transities</div>", unsafe_allow_html=True)
+            render_tag_pills(related_transities, muted=True)
+        if cross_signal in {"possible", "clear"} and cross_explanation and cross_explanation != "none":
+            st.markdown("<div class='detail-kicker'>Cross-opgave toelichting</div>", unsafe_allow_html=True)
+            st.write(cross_explanation)
+        elif screening_output:
+            st.caption("Geen duidelijke cross-opgave koppeling.")
+        else:
+            st.write("Nog geen screeningsanalyse beschikbaar.")
+    with main_cols[1]:
+        st.subheader("Documentgegevens")
+        st.write(f"**Bron:** {source_label}")
+        st.write(f"**Publicatiedatum:** {publication_label}")
+        st.write(f"**Type:** {doc.get('content_type') or 'Onbekend'}")
+        st.write(f"**PDF beschikbaar:** {'Ja' if doc.get('local_file_path') else 'Nee'}")
+        st.write(f"**Screening status:** {doc.get('screening_status') or 'Niet gestart'}")
+        if doc.get("screened_at"):
+            st.write(f"**Gescreend op:** {doc['screened_at'].strftime('%d-%m-%Y %H:%M')}")
 
 
 # =============================================================================
 # AUTHENTICATION GATE
 # =============================================================================
 ensure_auth_state_initialized()
+restore_auth_from_query_params()
 
 if not auth_config_valid():
     st.error(
@@ -1002,6 +1341,8 @@ if page == "📚 Documenten":
                     selected_doc_id = doc_ids[selected_row_idx]
                     st.session_state.selected_doc_id = selected_doc_id
                     st.session_state.show_detail = True
+                    st.session_state.detail_subview = "main"
+                    st.session_state.detail_advanced_focus = None
                     st.rerun()
             
             else:

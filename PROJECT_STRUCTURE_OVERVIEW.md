@@ -4,7 +4,7 @@
 - A Python-based climate adaptation knowledge base focused on Dutch policy/governance and related evidence sources.
 - A batch ingestion pipeline (`main.py`) that discovers from `rss`, `sitemap`, and `listing` sources, filters relevance, extracts content, tags keywords, and stores documents.
 - A backend screening runner (`screen_documents.py`) that calls OpenAI with controlled prompts/payloads and persists validated screening output.
-- A Streamlit operations UI (`dashboard.py`) for browsing docs, filtering (including tags), editing screening prompts/config, previewing screening payloads, and running non-LLM jobs.
+- A Streamlit operations UI (`dashboard.py`) for browsing docs, filtering (including tags), editing screening prompts/config, reviewing stored screening results, and running non-LLM jobs.
 - Local persistence with SQLite (`kennisbank.db`) and local `pdfs/` storage.
 
 ## Top-Level Directory Map
@@ -48,7 +48,7 @@ KA-database/
 | File | Primary Role | Inputs | Outputs | Side Effects |
 |---|---|---|---|---|
 | `main.py` | Pipeline orchestrator with lock protection | CLI args, config paths, env vars | Pipeline stats + console logs | Creates/removes lock file, runs ingestion |
-| `dashboard.py` | Streamlit operator UI | DB records, config files, user actions | UI views and saved settings/analysis | Writes config files, updates DB, runs subprocesses |
+| `dashboard.py` | Streamlit operator UI | DB records, config files, user actions | UI views and saved settings/analysis | Writes config files, updates DB, runs subprocesses, persists lightweight auth across reload/navigation |
 | `config.py` | Central config and file loading/saving | Env vars, text/JSON config files | Source configs, keywords, prompts | Reads/writes prompts; resolves runtime paths |
 | `modules/ingest.py` | Multi-source ingestion orchestration | Source configs + discovery candidates | Stored `documents` rows + stats | Calls discovery/fetch/filter/tag/store pipeline |
 | `modules/discovery_rss.py` | RSS candidate discovery | RSS source config | Candidate list | HTTP requests + feed parsing |
@@ -115,6 +115,7 @@ KA-database/
   - `KA_DASHBOARD_USERNAME`
   - `KA_DASHBOARD_PASSWORD`
 - If either variable is missing, dashboard access is blocked (fail closed).
+- After login, the dashboard keeps access alive across reloads and card-detail navigation with a lightweight signed query-param token.
 - OpenAI screening also requires backend environment variables:
   - `KA_OPENAI_API_KEY`
   - `KA_OPENAI_MODEL`

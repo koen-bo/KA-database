@@ -6,6 +6,7 @@ The app operates as a document intelligence workflow with automated ingestion, d
 - Deterministic screening preparation: stored source text can be cleaned/backfilled into `cleaned_text`, excerpted with rule-based logic, and converted into a compact LLM request shape.
 - Backend LLM screening: eligible documents can be screened in batches through a backend-only OpenAI runner that validates structured output and persists status/results.
 - Operator UI (Streamlit): users browse and filter documents (including keyword tags), inspect full text and PDFs, preview screening excerpts/request payloads, edit screening prompts, inspect source config, and trigger ingestion/refetch/backfill jobs. The dashboard does not directly execute LLM screening calls.
+  - the dashboard uses lightweight signed query-param persistence so login survives reloads and document-detail navigation from card links.
 
 ## Core Functional Areas
 
@@ -70,10 +71,14 @@ The app operates as a document intelligence workflow with automated ingestion, d
   - shows the response schema
   - lets the operator test the exact screening request shape on a sample document.
 - Document detail page shows:
-  - full text preview
-  - PDF availability
-  - screening preview (`excerpt_text`, reduced LLM input JSON, final user message)
-  - legacy stored AI output only in a collapsed section, for backward compatibility.
+  - a reader-first main screen with title, source/date/URL, thumbnail, stored short summary, climate-adaptation relevance, explanation, related opgaven/transities, and compact document metadata
+  - a separate `Advanced` subview for technical inspection:
+    - full text
+    - PDF/download
+    - screening excerpt preview
+    - reduced LLM input JSON
+    - final user message
+    - screening metadata and legacy AI output
 
 ### 6. Screening Preparation
 - Implemented in `modules/screening.py`.
@@ -121,10 +126,11 @@ The app operates as a document intelligence workflow with automated ingestion, d
 3. Open document browser and filter to relevant/new documents (including tag filtering when useful).
 4. Open a specific document detail page.
 5. Inspect the screening preview generated from cleaned text and deterministic excerpt selection.
-6. Open Prompt Studio to tune screening prompts and test the exact request shape on sample documents.
-7. Run backend screening in controlled batches via `python screen_documents.py --limit N` when ready.
-8. Inspect stored screening results/status in the database or dashboard views.
-9. Repeat for remaining documents; optionally run backfill jobs.
+6. Review the reader-first detail screen for stored screening results; use `Advanced` only when deeper inspection is needed.
+7. Open Prompt Studio to tune screening prompts and test the exact request shape on sample documents.
+8. Run backend screening in controlled batches via `python screen_documents.py --limit N` when ready.
+9. Inspect stored screening results/status in the database or dashboard views.
+10. Repeat for remaining documents; optionally run backfill jobs.
 
 ## State Model
 - `new`
@@ -172,6 +178,7 @@ The app operates as a document intelligence workflow with automated ingestion, d
   - `python backfill_cleaned_text.py --only-missing`
   - `python screen_documents.py --limit 5`
   - `python screen_documents.py --retry-failed --limit 5`
+  - `python screen_documents.py --doc-id 28 --force-rescreen`
 - Environment/config controls:
   - `KA_DATA_DIR`
   - `KA_SOURCES_FILE` (preferred)
