@@ -1,10 +1,11 @@
 ﻿# App Functionality and Gameplay Loop
 
 ## Functional Overview (Current State)
-The app operates as a document intelligence workflow with automated ingestion, deterministic screening preparation, and operator inspection tools:
+The app operates as a document intelligence workflow with automated ingestion, deterministic screening preparation, backend-controlled LLM screening, and operator inspection tools:
 - Automated ingestion: sources are discovered via `rss`, `sitemap`, and `listing` methods, entries are filtered by tiered relevance rules, content is fetched/extracted, and new documents are stored in SQLite.
-- Deterministic screening preparation: stored source text can be cleaned/backfilled into `cleaned_text`, excerpted with rule-based logic, and converted into a compact LLM request shape without calling an LLM yet.
-- Operator UI (Streamlit): users browse and filter documents (including keyword tags), inspect full text and PDFs, preview screening excerpts/request payloads, edit screening prompts, inspect source config, and trigger ingestion/refetch/backfill jobs.
+- Deterministic screening preparation: stored source text can be cleaned/backfilled into `cleaned_text`, excerpted with rule-based logic, and converted into a compact LLM request shape.
+- Backend LLM screening: eligible documents can be screened in batches through a backend-only OpenAI runner that validates structured output and persists status/results.
+- Operator UI (Streamlit): users browse and filter documents (including keyword tags), inspect full text and PDFs, preview screening excerpts/request payloads, edit screening prompts, inspect source config, and trigger ingestion/refetch/backfill jobs. The dashboard does not directly execute LLM screening calls.
 
 ## Core Functional Areas
 
@@ -86,7 +87,23 @@ The app operates as a document intelligence workflow with automated ingestion, d
   - builds a reduced `LLMScreeningRequest` for later API use
   - compiles a structured request shape (`system` prompt + JSON user message).
 
-### 7. Backfill Operations
+### 7. Backend LLM Screening
+- Implemented in `modules/llm_screening.py` and `screen_documents.py`.
+- Step 3 execution:
+  - selects eligible documents from the database
+  - skips `completed` rows by default
+  - can retry `failed` rows or force-rescreen explicitly
+  - builds the Step 2 request payload
+  - calls OpenAI with the screening prompt and reduced JSON request
+  - validates the JSON response against the controlled screening schema
+  - persists status, model, input payload, output payload, timestamps, and error text
+- Guardrails:
+  - backend-only CLI execution; no user-facing trigger in the dashboard
+  - configurable batch size, timeout, retries, and model
+  - `completed` results are not overwritten unless explicitly forced
+  - malformed output is marked `failed` instead of being stored as valid screening output
+
+### 8. Backfill Operations
 - PDF backfill:
   - `python refetch_pdfs.py`
 - Keyword-tag backfill:
@@ -105,8 +122,9 @@ The app operates as a document intelligence workflow with automated ingestion, d
 4. Open a specific document detail page.
 5. Inspect the screening preview generated from cleaned text and deterministic excerpt selection.
 6. Open Prompt Studio to tune screening prompts and test the exact request shape on sample documents.
-7. Use the resulting prompt/request contract for external LLM testing or future batch screening integration.
-8. Repeat for remaining documents; optionally run backfill jobs.
+7. Run backend screening in controlled batches via `python screen_documents.py --limit N` when ready.
+8. Inspect stored screening results/status in the database or dashboard views.
+9. Repeat for remaining documents; optionally run backfill jobs.
 
 ## State Model
 - `new`
@@ -116,6 +134,16 @@ The app operates as a document intelligence workflow with automated ingestion, d
 - `failed`
   - supported status; UI has badge support.
   - ingestion currently tracks failures in counters (fetch/store/discovery warnings) but does not persist failed placeholder rows.
+
+### Screening Status Model
+- `NULL`
+  - document has not been screened yet.
+- `pending`
+  - screening request payload has been prepared and the document is in progress.
+- `completed`
+  - validated screening output is stored in `screening_output_json`.
+- `failed`
+  - the most recent screening attempt failed due to API, parsing, or validation problems.
 
 ## Reliability and Guardrails
 - Ingestion lock:
@@ -141,12 +169,21 @@ The app operates as a document intelligence workflow with automated ingestion, d
   - `streamlit run dashboard.py`
   - `python refetch_pdfs.py`
   - `python backfill_tags.py --only-missing`
+  - `python backfill_cleaned_text.py --only-missing`
+  - `python screen_documents.py --limit 5`
+  - `python screen_documents.py --retry-failed --limit 5`
 - Environment/config controls:
   - `KA_DATA_DIR`
   - `KA_SOURCES_FILE` (preferred)
   - `KA_FEEDS_FILE` (legacy fallback)
   - `KA_DASHBOARD_USERNAME`
   - `KA_DASHBOARD_PASSWORD`
+  - `KA_OPENAI_API_KEY`
+  - `KA_OPENAI_MODEL`
+  - `KA_OPENAI_BASE_URL`
+  - `KA_OPENAI_TIMEOUT_SECONDS`
+  - `KA_OPENAI_MAX_RETRIES`
+  - `KA_SCREENING_BATCH_SIZE`
   - `KA_MAX_CANDIDATES_PER_SOURCE`
   - `KA_MAX_AGE_DAYS_SITEMAP_LISTING`
   - `KA_MAX_SITEMAP_URLS_PER_SOURCE`
@@ -154,4 +191,4 @@ The app operates as a document intelligence workflow with automated ingestion, d
   - `KA_MAX_LISTING_PAGES_PER_SOURCE`
   - `KA_MAX_ENTRIES_PER_FEED`
 - Database contract:
-  - `documents` table includes source metadata, discovery metadata, extracted content, cleaned screening text (`cleaned_text`, version/timestamp), keyword tags (`keyword_tags`), and legacy manual AI output fields.
+  - `documents` table includes source metadata, discovery metadata, extracted content, cleaned screening text (`cleaned_text`, version/timestamp), keyword tags (`keyword_tags`), screening execution fields (`screening_status`, timestamps, model, input/output JSON, error), and legacy manual AI output fields.
