@@ -10,6 +10,9 @@ klimaatbestendig
 klimaatrobuust
 klimaatrisico
 klimaatschade
+klimaatveiligheid
+klimaatdreiging
+klimaatdreigingen
 adaptatiestrategie
 ruimtelijke adaptatie
 
@@ -21,6 +24,9 @@ nas 2026
 nup ka
 water en bodem sturend
 waterbodemsturend
+water en bodemsysteem
+water- en bodemsysteem
+bodemsysteem
 
 # Methodiek
 meerlaagsveiligheid
@@ -34,6 +40,8 @@ hitte-eiland
 
 # Water & veiligheid
 waterveiligheid
+watercrisis
+watercrises
 overstromingsrisico
 basisbeschermingsniveau
 droogteproblematiek

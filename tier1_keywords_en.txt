@@ -7,4 +7,6 @@ flood risk
 drought risk
 heat risk
 climate resilience
+climate resilient
+climate-resilient
 nature-based solutions

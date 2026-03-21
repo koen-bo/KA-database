@@ -29,7 +29,6 @@ verzilting
 oogstschade
 natuurbrand
 veenweide
-spons
 vasthouden van water
 peilbeheer
 gewasopbrengst
@@ -39,7 +38,6 @@ brede weersverzekering
 funderingsschade
 paalrot
 vitale infrastructuur
-uitval
 cascade-effect
 bedrijventerreinen
 werklandschappen
@@ -55,9 +53,7 @@ groenblauwe dooradering
 vector-overdraagbare
 hooikoorts
 pollen
-hitteplan
 tropische nachten
 klimaatrechtvaardigheid
-kwetsbare groepen
 sociale infrastructuur
 autonome adaptatie

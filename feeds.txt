@@ -56,14 +56,11 @@ https://nipv.nl/feed/ | NIPV (Publieke Veiligheid / Natuurbranden)
 # WATER & WATERSCHAPPEN
 # =============================================================================
 https://unievanwaterschappen.nl/feed/ | Unie van Waterschappen
-https://www.waterforum.net/feed/ | Waterforum (Water nieuws)
 
 # =============================================================================
 # NATUUR & BIODIVERSITEIT
 # =============================================================================
 https://www.naturetoday.com/intl/nl/observations/rss | Nature Today (Biodiversiteit)
-https://www.natuurmonumenten.nl/rss.xml | Natuurmonumenten
-https://www.greenpeace.org/nl/feed/ | Greenpeace Nederland
 
 # =============================================================================
 # NIET BESCHIKBAAR (geen directe RSS feeds)

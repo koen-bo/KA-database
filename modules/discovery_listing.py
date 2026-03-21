@@ -4,6 +4,7 @@ Discovery adapter for HTML listing sources.
 
 from datetime import datetime
 import os
+import re
 from typing import Optional
 from urllib.parse import urljoin
 
@@ -26,11 +27,56 @@ def _parse_date(value: str) -> Optional[datetime]:
     value = (value or "").strip()
     if not value:
         return None
-    for fmt in ("%Y-%m-%d", "%d-%m-%Y", "%d/%m/%Y"):
+
+    # Common numeric formats
+    for pattern, fmt in (
+        (r"\b\d{4}-\d{2}-\d{2}\b", "%Y-%m-%d"),
+        (r"\b\d{2}-\d{2}-\d{4}\b", "%d-%m-%Y"),
+        (r"\b\d{2}/\d{2}/\d{4}\b", "%d/%m/%Y"),
+        (r"\b\d{2}\.\d{2}\.\d{4}\b", "%d.%m.%Y"),
+    ):
+        match = re.search(pattern, value)
+        if not match:
+            continue
         try:
-            return datetime.strptime(value, fmt)
+            return datetime.strptime(match.group(0), fmt)
         except ValueError:
             continue
+
+    # Textual month formats used by Dutch and English listing pages.
+    month_names = {
+        "januari": 1,
+        "january": 1,
+        "februari": 2,
+        "february": 2,
+        "maart": 3,
+        "march": 3,
+        "april": 4,
+        "mei": 5,
+        "may": 5,
+        "juni": 6,
+        "june": 6,
+        "juli": 7,
+        "july": 7,
+        "augustus": 8,
+        "august": 8,
+        "september": 9,
+        "oktober": 10,
+        "october": 10,
+        "november": 11,
+        "december": 12,
+    }
+    lowered = value.lower()
+    match = re.search(r"\b(\d{1,2})\s+([a-z]+)\s+(\d{4})\b", lowered)
+    if match:
+        day = int(match.group(1))
+        month = month_names.get(match.group(2))
+        year = int(match.group(3))
+        if month is not None:
+            try:
+                return datetime(year, month, day)
+            except ValueError:
+                return None
     return None
 
 

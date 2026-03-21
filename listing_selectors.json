@@ -18,11 +18,11 @@
     "next_page_selector": "a[rel='next'], a.next, .next a"
   },
   "rioned_nieuws": {
-    "item_selector": "article, .news-item, .views-row, li",
-    "link_selector": "a[href]",
-    "title_selector": "h2 a, h3 a, .title a",
-    "date_selector": "time, .date",
-    "summary_selector": ".summary, .intro, p",
+    "item_selector": ".MuiCard-root",
+    "link_selector": "a[href^='/nieuws/'], a[href*='/nieuws/']",
+    "title_selector": "h5",
+    "date_selector": "p.button-small:last-child",
+    "summary_selector": "",
     "pagination_selector": ".pagination, .pager, nav.pagination",
     "next_page_selector": "a[rel='next'], a.next, .next a"
   },
@@ -53,6 +53,15 @@
     "pagination_selector": ".pagination, nav.pagination",
     "next_page_selector": "a.next, a[rel='next'], .next a"
   },
+  "ggdghor_actueel": {
+    "item_selector": "article.grid-card-news",
+    "link_selector": "a.overlay-link",
+    "title_selector": "h3.h5",
+    "date_selector": ".post-date",
+    "summary_selector": ".card-content p",
+    "pagination_selector": ".pagination, nav.pagination",
+    "next_page_selector": "a.next, a[rel='next'], .next a"
+  },
   "kanl_actueel": {
     "item_selector": "article, .news-item, .views-row, li",
     "link_selector": "a[href]",
@@ -68,6 +77,15 @@
     "title_selector": "h2 a, h3 a, .title a",
     "date_selector": "time, .date",
     "summary_selector": ".summary, .intro, p",
+    "pagination_selector": ".pagination, nav.pagination, .pager",
+    "next_page_selector": "a[rel='next'], a.next, .next a"
+  },
+  "cra_actueel": {
+    "item_selector": "li.__cq-card",
+    "link_selector": "a.card[href]",
+    "title_selector": "h3.card__title",
+    "date_selector": ".card__date",
+    "summary_selector": "p.card__text",
     "pagination_selector": ".pagination, nav.pagination, .pager",
     "next_page_selector": "a[rel='next'], a.next, .next a"
   },
@@ -90,11 +108,11 @@
     "next_page_selector": "a[rel='next'], a.next, .next a"
   },
   "veiligheidsberaad_nieuws": {
-    "item_selector": "article, .news-item, .post, li",
-    "link_selector": "a[href]",
-    "title_selector": "h2 a, h3 a, .entry-title a, .title a",
-    "date_selector": "time, .date",
-    "summary_selector": ".summary, .intro, .entry-summary, p",
+    "item_selector": ".jet-smart-listing__post-wrapper",
+    "link_selector": ".jet-smart-listing__post-title a, .jet-smart-listing__post-thumbnail a",
+    "title_selector": ".jet-smart-listing__post-title",
+    "date_selector": ".jet-smart-listing__meta time",
+    "summary_selector": ".jet-smart-listing__post-excerpt",
     "pagination_selector": ".pagination, nav.pagination, .pager",
     "next_page_selector": "a[rel='next'], a.next, .next a"
   },
@@ -140,6 +158,33 @@
     "title_selector": "h3.listing-header, h3 a, h3, .title a",
     "date_selector": "p.listing-date, .listing-date, time, .date, .tileDate",
     "summary_selector": "p.listing-description, .listing-description, .summary, .intro, .description, p",
+    "pagination_selector": ".pagination, nav.pagination, .pager",
+    "next_page_selector": "a[rel='next'], a.next, .next a"
+  },
+  "copernicus_news": {
+    "item_selector": ".teaser.teaser--with-aside",
+    "link_selector": "h3.teaser__title a",
+    "title_selector": "h3.teaser__title",
+    "date_selector": ".l-meta time, time",
+    "summary_selector": ".teaser__description",
+    "pagination_selector": ".pager, nav.pagination, .pagination",
+    "next_page_selector": "a[rel='next'], a.next, .next a"
+  },
+  "vnci_nieuws": {
+    "item_selector": ".columns-news__position",
+    "link_selector": "a.c-news__link",
+    "title_selector": ".column-news__position__contents__title",
+    "date_selector": ".column-news__position__contents__date",
+    "summary_selector": ".column-news__position__content__summary",
+    "pagination_selector": ".pagination, nav.pagination, .pager",
+    "next_page_selector": "a[rel='next'], a.next, .next a"
+  },
+  "fnv_persberichten": {
+    "item_selector": ".nieuwsoverzicht__item-container",
+    "link_selector": "a.nieuwsoverzicht__item",
+    "title_selector": ".nieuwsoverzicht__item-title",
+    "date_selector": ".nieuwsoverzicht__item-date",
+    "summary_selector": "",
     "pagination_selector": ".pagination, nav.pagination, .pager",
     "next_page_selector": "a[rel='next'], a.next, .next a"
   }

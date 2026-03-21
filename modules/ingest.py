@@ -31,6 +31,7 @@ class MultiSourceIngester:
         self.fetcher = ContentFetcher()
         self.max_candidates_per_source = self._load_max_candidates_per_source()
         self.max_age_days_sitemap_listing = self._load_max_age_days_sitemap_listing()
+        self.min_publication_date_override = self._load_min_publication_date_override()
         self.stats = {
             "sources_processed": 0,
             "rss_sources_processed": 0,
@@ -39,6 +40,8 @@ class MultiSourceIngester:
             "entries_found": 0,
             "entries_skipped_old": 0,
             "entries_enriched": 0,
+            "entries_rechecked": 0,
+            "entries_recovered": 0,
             "entries_filtered": 0,
             "entries_skipped_existing": 0,
             "entries_fetched": 0,
@@ -139,6 +142,13 @@ class MultiSourceIngester:
         )
 
         filter_result = check_relevance(title, description)
+        if not filter_result.is_relevant:
+            title, description, filter_result = self._recheck_candidate_relevance(
+                title=title,
+                description=description,
+                link=link,
+                filter_result=filter_result,
+            )
         if not filter_result.is_relevant:
             self.stats["entries_filtered"] += 1
             return
@@ -275,6 +285,70 @@ class MultiSourceIngester:
         except Exception:
             return title, description
 
+    def _recheck_candidate_relevance(
+        self,
+        title: str,
+        description: str,
+        link: str,
+        filter_result,
+    ) -> tuple[str, str, object]:
+        """
+        Second-chance relevance pass using richer page text.
+
+        Some sources expose generic card/feed titles while the actual article body
+        contains clear adaptation keywords. For those borderline misses, fetch the
+        page once and retry relevance using title, meta description, and a short
+        article excerpt.
+        """
+        try:
+            response = requests.get(
+                link,
+                headers={"User-Agent": USER_AGENT},
+                timeout=REQUEST_TIMEOUT,
+                allow_redirects=True,
+            )
+            response.raise_for_status()
+            content_type = response.headers.get("Content-Type", "").lower()
+            if "html" not in content_type:
+                return title, description, filter_result
+
+            soup = BeautifulSoup(response.text, "html.parser")
+            page_title = soup.title.get_text(" ", strip=True) if soup.title else ""
+
+            meta_desc = ""
+            meta_node = soup.find("meta", attrs={"name": "description"})
+            if meta_node and meta_node.get("content"):
+                meta_desc = meta_node.get("content", "").strip()
+            if not meta_desc:
+                og_node = soup.find("meta", attrs={"property": "og:description"})
+                if og_node and og_node.get("content"):
+                    meta_desc = og_node.get("content", "").strip()
+
+            content_root = soup.find("article") or soup.find("main") or soup.body
+            excerpt_parts: list[str] = []
+            if content_root is not None:
+                for text_chunk in content_root.stripped_strings:
+                    if len(" ".join(excerpt_parts)) >= 2500:
+                        break
+                    excerpt_parts.append(text_chunk)
+            excerpt = " ".join(excerpt_parts)
+            excerpt = excerpt[:2500].strip()
+
+            retry_title = page_title or title
+            retry_description = " ".join(
+                part for part in [description.strip(), meta_desc, excerpt] if part
+            ).strip()
+
+            self.stats["entries_rechecked"] += 1
+            retry_result = check_relevance(retry_title, retry_description)
+            if retry_result.is_relevant:
+                self.stats["entries_recovered"] += 1
+                return retry_title, retry_description, retry_result
+
+            return retry_title or title, retry_description or description, filter_result
+        except Exception:
+            return title, description, filter_result
+
     def _load_max_age_days_sitemap_listing(self) -> int:
         """
         Maximum age in days for sitemap/listing candidates.
@@ -289,6 +363,24 @@ class MultiSourceIngester:
                 "Falling back to 183."
             )
             return 183
+
+    def _load_min_publication_date_override(self) -> Optional[datetime]:
+        """
+        Optional absolute publication-date floor for sitemap/listing discovery.
+
+        Env format: YYYY-MM-DD
+        """
+        raw_value = (os.getenv("KA_MIN_PUBLICATION_DATE") or "").strip()
+        if not raw_value:
+            return None
+        try:
+            return datetime.strptime(raw_value, "%Y-%m-%d")
+        except ValueError:
+            print(
+                f"[WARNING] Invalid KA_MIN_PUBLICATION_DATE='{raw_value}'. "
+                "Expected YYYY-MM-DD. Ignoring override."
+            )
+            return None
 
     def _is_too_old(self, publication_date: Optional[datetime]) -> bool:
         """Return True when publication date is older than configured age cap."""
@@ -311,6 +403,9 @@ class MultiSourceIngester:
         """
         if source["method"] not in {"sitemap", "listing"}:
             return None
+
+        if self.min_publication_date_override is not None:
+            return self.min_publication_date_override
 
         cutoff = None
         if self.max_age_days_sitemap_listing > 0:
@@ -336,6 +431,8 @@ class MultiSourceIngester:
     Entries found:          {self.stats['entries_found']}
     Skipped old (S/L):     {self.stats['entries_skipped_old']}
     Enriched meta (S/L):   {self.stats['entries_enriched']}
+    Rechecked full page:    {self.stats['entries_rechecked']}
+    Recovered by recheck:   {self.stats['entries_recovered']}
     Filtered out:           {self.stats['entries_filtered']}
     Already in DB:          {self.stats['entries_skipped_existing']}
     Fetched:                {self.stats['entries_fetched']}
