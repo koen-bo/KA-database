@@ -36,6 +36,7 @@ class Document(Base):
     publication_date: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     discovery_method: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     discovery_source_url: Mapped[Optional[str]] = mapped_column(String(2048), nullable=True)
+    doc_type: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     
     # Fetching metadata
     fetched_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
@@ -122,6 +123,8 @@ def _ensure_schema_columns() -> None:
             conn.execute(text("ALTER TABLE documents ADD COLUMN discovery_method TEXT;"))
         if "discovery_source_url" not in existing_columns:
             conn.execute(text("ALTER TABLE documents ADD COLUMN discovery_source_url TEXT;"))
+        if "doc_type" not in existing_columns:
+            conn.execute(text("ALTER TABLE documents ADD COLUMN doc_type TEXT;"))
         if "keyword_tags" not in existing_columns:
             conn.execute(text("ALTER TABLE documents ADD COLUMN keyword_tags TEXT;"))
         if "thumbnail_url" not in existing_columns:
@@ -167,6 +170,7 @@ def add_document(
     processing_status: str = "new",
     discovery_method: Optional[str] = None,
     discovery_source_url: Optional[str] = None,
+    doc_type: Optional[str] = None,
     keyword_tags: Optional[str] = None,
 ) -> Document:
     """
@@ -193,6 +197,7 @@ def add_document(
             publication_date=publication_date,
             discovery_method=discovery_method,
             discovery_source_url=discovery_source_url,
+            doc_type=doc_type,
             fetched_at=datetime.now(),
             content_type=content_type,
             local_file_path=local_file_path,

@@ -38,6 +38,12 @@ from modules.screening import (
     screening_output_schema,
     serialize_llm_screening_request,
 )
+from modules.source_metadata import (
+    PARLIAMENT_DOC_TYPES,
+    RIJKSOVERHEID_DOC_TYPES,
+    get_parliament_source_names,
+    get_rijksoverheid_source_names,
+)
 import config
 
 # Page config
@@ -414,6 +420,23 @@ def get_unique_sources() -> list[str]:
         return sorted([s[0] for s in sources if s[0]])
 
 
+def get_unique_doc_types() -> list[str]:
+    """Get distinct doc_type values currently present in the database."""
+    with get_session() as session:
+        doc_types = session.query(Document.doc_type).distinct().all()
+        present = {d[0] for d in doc_types if d[0]}
+        ordered = [doc_type for doc_type in RIJKSOVERHEID_DOC_TYPES if doc_type in present]
+        extras = sorted(present.difference(ordered))
+        return ordered + extras
+
+
+@st.cache_data(ttl=300)
+def get_rijksoverheid_source_groups() -> tuple[list[str], list[str]]:
+    """Return configured Rijksoverheid and parliament-oriented source names."""
+    sources = config.load_sources()
+    return get_rijksoverheid_source_names(sources), get_parliament_source_names(sources)
+
+
 def parse_keyword_tags(raw: str | None) -> list[str]:
     """Parse keyword tag JSON into a normalized list."""
     if not raw:
@@ -585,6 +608,7 @@ def get_unique_keyword_tags() -> list[str]:
 def load_documents_filtered(
     search_query: str = "",
     sources: list[str] = None,
+    doc_types: list[str] = None,
     status_filter: str = "Alle",
     has_pdf_filter: str = "Alle",
     selected_tags: list[str] = None,
@@ -611,6 +635,9 @@ def load_documents_filtered(
         # Source filter (multiselect)
         if sources and len(sources) > 0:
             query = query.filter(Document.source_name.in_(sources))
+
+        if doc_types and len(doc_types) > 0:
+            query = query.filter(Document.doc_type.in_(doc_types))
         
         # Status filter
         if status_filter != "Alle":
@@ -641,6 +668,7 @@ def load_documents_filtered(
                 "id": doc.id,
                 "title": doc.title,
                 "source_name": doc.source_name,
+                "doc_type": doc.doc_type,
                 "content_type": doc.content_type,
                 "publication_date": doc.publication_date,
                 "fetched_at": doc.fetched_at,
@@ -702,6 +730,7 @@ def get_document_details(doc_id: int) -> dict:
                 "title": doc.title,
                 "url": doc.url,
                 "source_name": doc.source_name,
+                "doc_type": doc.doc_type,
                 "publication_date": doc.publication_date,
                 "fetched_at": doc.fetched_at,
                 "content_type": doc.content_type,
@@ -741,8 +770,9 @@ def get_sample_documents(limit: int = 100) -> list[dict]:
                 {
                     "id": doc.id,
                     "title": doc.title or f"Document {doc.id}",
-                    "source_name": doc.source_name,
-                    "publication_date": doc.publication_date,
+                "source_name": doc.source_name,
+                "doc_type": doc.doc_type,
+                "publication_date": doc.publication_date,
                     "url": doc.url,
                     "content_type": doc.content_type,
                     "discovery_method": doc.discovery_method,
@@ -794,6 +824,7 @@ def render_card(doc: dict) -> str:
     title = title_raw
     date_str = doc["publication_date"].strftime("%d-%m-%Y") if doc.get("publication_date") else "Onbekend"
     author = doc.get("source_name") or "Onbekend"
+    doc_type = doc.get("doc_type") or "onbekend"
     summary = build_card_summary(doc.get("full_text"), source_name=author, publication_date=doc.get("publication_date"))
     thumb_url = doc.get("thumbnail_url") or get_placeholder_image_data_uri()
     visible_tags, overflow = get_tier1_tag_chips(doc.get("keyword_tags", []))
@@ -811,7 +842,7 @@ def render_card(doc: dict) -> str:
         <img class="card-thumb" src="{html.escape(thumb_url)}" alt="thumbnail">
         <div class="card-content">
             <div class="card-tags">{tags_html}</div>
-            <div class="card-meta">{html.escape(date_str)} / {html.escape(author)}</div>
+            <div class="card-meta">{html.escape(date_str)} / {html.escape(author)} / {html.escape(doc_type)}</div>
             <div class="card-title">{html.escape(title)}</div>
             <div class="card-summary">{html.escape(summary)}</div>
         </div>
@@ -861,6 +892,7 @@ def render_document_detail(doc_id: int):
     screening_output = parse_screening_output(doc.get("screening_output_json"))
     thumbnail_url = doc.get("thumbnail_url") or get_placeholder_image_data_uri()
     source_label = doc.get("source_name") or "Onbekende bron"
+    doc_type_label = doc.get("doc_type") or "onbekend"
     publication_label = format_detail_date(doc.get("publication_date"))
     score = screening_output.get("climate_adaptation_relevance_score") if screening_output else None
     score_badge_class = get_score_badge_class(score)
@@ -988,7 +1020,7 @@ def render_document_detail(doc_id: int):
     header_cols = st.columns([4.2, 1.3], gap="large")
     with header_cols[0]:
         st.title(doc['title'] or "Geen titel")
-        st.caption(f"{source_label} · {publication_label} · {doc.get('content_type') or 'onbekend'}")
+        st.caption(f"{source_label} · {publication_label} · {doc_type_label} · {doc.get('content_type') or 'onbekend'}")
         if doc.get("url"):
             st.markdown(f"[{doc['url']}]({doc['url']})")
         action_cols = st.columns([1, 1, 0.9])
@@ -1077,6 +1109,7 @@ def render_document_detail(doc_id: int):
         st.subheader("Documentgegevens")
         st.write(f"**Bron:** {source_label}")
         st.write(f"**Publicatiedatum:** {publication_label}")
+        st.write(f"**Documenttype:** {doc_type_label}")
         st.write(f"**Type:** {doc.get('content_type') or 'Onbekend'}")
         st.write(f"**PDF beschikbaar:** {'Ja' if doc.get('local_file_path') else 'Nee'}")
         st.write(f"**Screening status:** {doc.get('screening_status') or 'Niet gestart'}")
@@ -1108,7 +1141,7 @@ st.sidebar.title("🌍 Klimaatadaptatie KB")
 render_logout_control()
 page = st.sidebar.radio(
     "Navigatie",
-    ["📚 Documenten", "🔤 Zoektermen", "📡 RSS Feeds", "💬 Prompt Manager", "▶️ Pipeline"]
+    ["📚 Documenten", "🏛️ Rijksoverheid", "🔤 Zoektermen", "📡 RSS Feeds", "💬 Prompt Manager", "▶️ Pipeline"]
 )
 
 # =============================================================================
@@ -1168,7 +1201,7 @@ if page == "📚 Documenten":
                 )
 
             # Date range + tags
-            col_date1, col_date2, col_tags = st.columns(3)
+            col_date1, col_date2, col_tags, col_doc_type = st.columns(4)
             with col_date1:
                 date_from = st.date_input(
                     "📅 Datum van",
@@ -1209,6 +1242,15 @@ if page == "📚 Documenten":
                             key="filter_tags_match_label",
                         )
                 tags_match_mode = "any" if tags_mode_label == "Any" else "all"
+            with col_doc_type:
+                available_doc_types = get_unique_doc_types()
+                selected_doc_types = st.multiselect(
+                    "🏛️ Documenttype",
+                    options=available_doc_types,
+                    default=[],
+                    placeholder="Alle types",
+                    key="filter_doc_types",
+                )
         
         # ==========================================================================
         # VIEW SWITCHER
@@ -1237,6 +1279,7 @@ if page == "📚 Documenten":
         docs = load_documents_filtered(
             search_query=search_query,
             sources=selected_sources if selected_sources else None,
+            doc_types=selected_doc_types if selected_doc_types else None,
             status_filter=status_filter,
             has_pdf_filter=pdf_filter,
             selected_tags=selected_tags if selected_tags else None,
@@ -1256,6 +1299,11 @@ if page == "📚 Documenten":
             active_filters.append(f"Status: {status_filter}")
         if pdf_filter != "Alle":
             active_filters.append(f"PDF: {pdf_filter}")
+        if selected_doc_types:
+            if len(selected_doc_types) == 1:
+                active_filters.append(f"Type: {selected_doc_types[0]}")
+            else:
+                active_filters.append(f"Types: {selected_doc_types[0]} +{len(selected_doc_types) - 1}")
         if date_from:
             active_filters.append(f"Van: {date_from.strftime('%d-%m-%Y')}")
         if date_to:
@@ -1279,6 +1327,7 @@ if page == "📚 Documenten":
                     st.session_state.filter_date_from = None
                     st.session_state.filter_date_to = None
                     st.session_state.filter_tags = []
+                    st.session_state.filter_doc_types = []
                     st.session_state.filter_tags_match_label = "All (Aanbevolen)"
                     st.session_state.filter_limit = 500
                     st.rerun()
@@ -1307,6 +1356,7 @@ if page == "📚 Documenten":
                         "Datum": doc["publication_date"].strftime("%Y-%m-%d") if doc["publication_date"] else "",
                         "Titel": doc["title"] or "Geen titel",
                         "Bron": doc["source_name"] or "",
+                        "Doc type": doc["doc_type"] or "",
                         "Status": doc["processing_status"],
                         "PDF": "✅" if doc["local_file_path"] else "❌",
                         "AI": ai_status
@@ -1319,6 +1369,7 @@ if page == "📚 Documenten":
                     "Datum": st.column_config.TextColumn("Datum", width="small"),
                     "Titel": st.column_config.TextColumn("Titel", width="large"),
                     "Bron": st.column_config.TextColumn("Bron", width="medium"),
+                    "Doc type": st.column_config.TextColumn("Doc type", width="medium"),
                     "Status": st.column_config.TextColumn("Status", width="small"),
                     "PDF": st.column_config.TextColumn("PDF", width="small"),
                     "AI": st.column_config.TextColumn("AI", width="small")
@@ -1348,6 +1399,165 @@ if page == "📚 Documenten":
             else:
                 # --- CARD VIEW ---
                 render_cards_grid(docs)
+
+
+elif page == "🏛️ Rijksoverheid":
+    st.title("Rijksoverheid Monitor")
+    consume_open_doc_query_param()
+
+    if st.session_state.get("show_detail") and st.session_state.get("selected_doc_id"):
+        render_document_detail(st.session_state.selected_doc_id)
+    else:
+        rijksoverheid_sources, parliament_sources = get_rijksoverheid_source_groups()
+        st.caption("Voorgefilterd op alle geconfigureerde Rijksoverheid RSS-feeds, met extra parlement-focus.")
+
+        ro_search_query = st.text_input(
+            "🔍 Zoek in Rijksoverheid",
+            placeholder="Zoek op titel, inhoud of bron...",
+            label_visibility="collapsed",
+            key="ro_search_query",
+        )
+
+        with st.expander("🎛️ Rijksoverheid filters", expanded=True):
+            col_quick, col_source, col_doc_type = st.columns(3)
+            with col_quick:
+                parliament_only = st.checkbox(
+                    "Alleen parlement-relevante stroom",
+                    value=False,
+                    key="ro_parliament_only",
+                    help="Beperk tot Kamerstukken-bronnen en parlementaire documenttypen.",
+                )
+            with col_source:
+                selected_ro_sources = st.multiselect(
+                    "📁 Bron",
+                    options=rijksoverheid_sources,
+                    default=rijksoverheid_sources,
+                    key="ro_filter_sources",
+                )
+            with col_doc_type:
+                ro_doc_types = st.multiselect(
+                    "🏛️ Documenttype",
+                    options=get_unique_doc_types(),
+                    default=[],
+                    key="ro_filter_doc_types",
+                )
+
+            col_status, col_pdf, col_date1, col_date2 = st.columns(4)
+            with col_status:
+                ro_status_filter = st.radio(
+                    "📊 Status",
+                    ["Alle", "new", "analyzed"],
+                    horizontal=True,
+                    key="ro_filter_status",
+                )
+            with col_pdf:
+                ro_pdf_filter = st.radio(
+                    "📄 PDF",
+                    ["Alle", "Met PDF", "Zonder PDF"],
+                    horizontal=True,
+                    key="ro_filter_pdf",
+                )
+            with col_date1:
+                ro_date_from = st.date_input(
+                    "📅 Datum van",
+                    value=None,
+                    format="DD-MM-YYYY",
+                    key="ro_filter_date_from",
+                )
+            with col_date2:
+                ro_date_to = st.date_input(
+                    "📅 Datum tot",
+                    value=None,
+                    format="DD-MM-YYYY",
+                    key="ro_filter_date_to",
+                )
+
+        ro_source_scope = list(selected_ro_sources or rijksoverheid_sources)
+        if parliament_only:
+            ro_source_scope = [name for name in ro_source_scope if name in parliament_sources]
+            ro_doc_type_scope = ro_doc_types or sorted(PARLIAMENT_DOC_TYPES)
+        else:
+            ro_doc_type_scope = ro_doc_types or None
+
+        ro_date_from_dt = datetime.combine(ro_date_from, datetime.min.time()) if ro_date_from else None
+        ro_date_to_dt = datetime.combine(ro_date_to, datetime.max.time()) if ro_date_to else None
+
+        ro_docs = load_documents_filtered(
+            search_query=ro_search_query,
+            sources=ro_source_scope,
+            doc_types=ro_doc_type_scope,
+            status_filter=ro_status_filter,
+            has_pdf_filter=ro_pdf_filter,
+            date_from=ro_date_from_dt,
+            date_to=ro_date_to_dt,
+            limit=500,
+        )
+
+        doc_type_counts: dict[str, int] = {}
+        for doc in ro_docs:
+            label = doc.get("doc_type") or "onbekend"
+            doc_type_counts[label] = doc_type_counts.get(label, 0) + 1
+
+        stat_cols = st.columns(4)
+        stat_cols[0].metric("Documenten", len(ro_docs))
+        stat_cols[1].metric("Bronnen", len(set(doc["source_name"] for doc in ro_docs if doc.get("source_name"))))
+        stat_cols[2].metric("Met PDF", sum(1 for doc in ro_docs if doc.get("local_file_path")))
+        stat_cols[3].metric("Types", len(doc_type_counts))
+
+        if doc_type_counts:
+            sorted_types = sorted(doc_type_counts.items(), key=lambda item: (-item[1], item[0]))
+            st.caption("Meest voorkomende documenttypen: " + " | ".join(f"{name}: {count}" for name, count in sorted_types[:8]))
+
+        if not ro_docs:
+            st.info("Geen Rijksoverheid-documenten gevonden voor deze selectie.")
+        else:
+            ro_view_mode = st.radio(
+                "Weergave",
+                ["📋 Lijst", "🃏 Kaarten"],
+                horizontal=True,
+                key="ro_view_mode",
+                label_visibility="collapsed",
+            )
+
+            if ro_view_mode == "📋 Lijst":
+                df_data = []
+                doc_ids = []
+                for doc in ro_docs:
+                    doc_ids.append(doc["id"])
+                    df_data.append(
+                        {
+                            "Datum": doc["publication_date"].strftime("%Y-%m-%d") if doc["publication_date"] else "",
+                            "Titel": doc["title"] or "Geen titel",
+                            "Bron": doc["source_name"] or "",
+                            "Doc type": doc["doc_type"] or "",
+                            "PDF": "✅" if doc["local_file_path"] else "❌",
+                        }
+                    )
+                ro_df = pd.DataFrame(df_data)
+                ro_event = st.dataframe(
+                    ro_df,
+                    use_container_width=True,
+                    hide_index=True,
+                    column_config={
+                        "Datum": st.column_config.TextColumn("Datum", width="small"),
+                        "Titel": st.column_config.TextColumn("Titel", width="large"),
+                        "Bron": st.column_config.TextColumn("Bron", width="medium"),
+                        "Doc type": st.column_config.TextColumn("Doc type", width="medium"),
+                        "PDF": st.column_config.TextColumn("PDF", width="small"),
+                    },
+                    height=520,
+                    on_select="rerun",
+                    selection_mode="single-row",
+                )
+                if ro_event.selection and ro_event.selection.rows:
+                    selected_row_idx = ro_event.selection.rows[0]
+                    st.session_state.selected_doc_id = doc_ids[selected_row_idx]
+                    st.session_state.show_detail = True
+                    st.session_state.detail_subview = "main"
+                    st.session_state.detail_advanced_focus = None
+                    st.rerun()
+            else:
+                render_cards_grid(ro_docs)
 
 
 elif page == "🔤 Zoektermen":

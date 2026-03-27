@@ -8,16 +8,16 @@
 # LEGACY RSS FEEDS (RESTORED - 25/25)
 # =============================================================================
 # Rijksoverheid
-rss | Rijksoverheid - Klimaat Nieuws | https://feeds.rijksoverheid.nl/onderwerpen/klimaatverandering/nieuws.rss | {}
-rss | Rijksoverheid - Water Nieuws | https://feeds.rijksoverheid.nl/onderwerpen/water/nieuws.rss | {}
-rss | Rijksoverheid - Natuur Nieuws | https://feeds.rijksoverheid.nl/onderwerpen/natuur-en-biodiversiteit/nieuws.rss | {}
-rss | Rijksoverheid - Klimaat Documenten | https://feeds.rijksoverheid.nl/onderwerpen/klimaatverandering/documenten.rss | {}
-rss | Rijksoverheid - Water Documenten | https://feeds.rijksoverheid.nl/onderwerpen/water/documenten.rss | {}
-rss | Rijksoverheid - Kamerstukken | https://feeds.rijksoverheid.nl/kamerstukken.rss | {}
-rss | Min. IenW - Nieuws (incl. RWS) | https://feeds.rijksoverheid.nl/ministeries/ministerie-van-infrastructuur-en-waterstaat/nieuws.rss | {}
-rss | Min. IenW - Kamerstukken | https://feeds.rijksoverheid.nl/ministeries/ministerie-van-infrastructuur-en-waterstaat/kamerstukken.rss | {}
-rss | Min. LNV - Nieuws | https://feeds.rijksoverheid.nl/ministeries/ministerie-van-landbouw-visserij-voedselzekerheid-en-natuur/nieuws.rss | {}
-rss | Min. VRO - Nieuws | https://feeds.rijksoverheid.nl/ministeries/ministerie-van-volkshuisvesting-en-ruimtelijke-ordening/nieuws.rss | {}
+rss | Rijksoverheid - Klimaat Nieuws | https://feeds.rijksoverheid.nl/onderwerpen/klimaatverandering/nieuws.rss | {"classification_profile":"rijksoverheid_rss","recheck_linked_pdf":true}
+rss | Rijksoverheid - Water Nieuws | https://feeds.rijksoverheid.nl/onderwerpen/water/nieuws.rss | {"classification_profile":"rijksoverheid_rss","recheck_linked_pdf":true}
+rss | Rijksoverheid - Natuur Nieuws | https://feeds.rijksoverheid.nl/onderwerpen/natuur-en-biodiversiteit/nieuws.rss | {"classification_profile":"rijksoverheid_rss","recheck_linked_pdf":true}
+rss | Rijksoverheid - Klimaat Documenten | https://feeds.rijksoverheid.nl/onderwerpen/klimaatverandering/documenten.rss | {"classification_profile":"rijksoverheid_rss","recheck_linked_pdf":true,"max_entries":50}
+rss | Rijksoverheid - Water Documenten | https://feeds.rijksoverheid.nl/onderwerpen/water/documenten.rss | {"classification_profile":"rijksoverheid_rss","recheck_linked_pdf":true,"max_entries":50}
+rss | Rijksoverheid - Kamerstukken | https://feeds.rijksoverheid.nl/kamerstukken.rss | {"classification_profile":"rijksoverheid_rss","recheck_linked_pdf":true,"max_entries":80}
+rss | Min. IenW - Nieuws (incl. RWS) | https://feeds.rijksoverheid.nl/ministeries/ministerie-van-infrastructuur-en-waterstaat/nieuws.rss | {"classification_profile":"rijksoverheid_rss","recheck_linked_pdf":true}
+rss | Min. IenW - Kamerstukken | https://feeds.rijksoverheid.nl/ministeries/ministerie-van-infrastructuur-en-waterstaat/kamerstukken.rss | {"classification_profile":"rijksoverheid_rss","recheck_linked_pdf":true,"max_entries":50}
+rss | Min. LNV - Nieuws | https://feeds.rijksoverheid.nl/ministeries/ministerie-van-landbouw-visserij-voedselzekerheid-en-natuur/nieuws.rss | {"classification_profile":"rijksoverheid_rss","recheck_linked_pdf":true}
+rss | Min. VRO - Nieuws | https://feeds.rijksoverheid.nl/ministeries/ministerie-van-volkshuisvesting-en-ruimtelijke-ordening/nieuws.rss | {"classification_profile":"rijksoverheid_rss","recheck_linked_pdf":true}
 
 # Institutions and research
 rss | Tweede Kamer | https://www.tweedekamer.nl/rss.xml | {}

@@ -16,6 +16,17 @@ Important:
    - `KA_DASHBOARD_PASSWORD`
    - `KA_DATA_DIR=/data`
 3. Redeploy app service.
+4. For the ingestion worker, verify it uses the updated `sources.txt` from the image unless you intentionally override via `KA_SOURCES_FILE`.
+5. Configure the ingestion worker to run the Rijksoverheid RSS family multiple times per day.
+
+Recommended schedule for the ingestion worker:
+- every 6 hours for the main ingestion pipeline
+- or split out an extra Rijksoverheid-focused worker/job if you want tighter monitoring without increasing all-source load
+
+Rijksoverheid RSS notes:
+- all `feeds.rijksoverheid.nl` sources now classify `doc_type`
+- these sources can do an extra linked-PDF relevance precheck before rejection
+- this improves recall, but makes Rijksoverheid runs somewhat heavier than before
 
 ## Post-Deploy Verification
 Run on VPS:

@@ -82,6 +82,31 @@ class ContentFetcher:
         except Exception as e:
             print(f"[Fetcher] Unexpected error processing {url}: {e}")
             return None
+
+    def extract_linked_pdf_excerpt(
+        self,
+        html_content: str,
+        page_url: str,
+        article_title: str = "",
+        max_pages: int = 5,
+        max_chars: int = 12000,
+    ) -> tuple[Optional[str], Optional[str]]:
+        """
+        Extract a bounded text excerpt from a linked PDF without storing it.
+
+        Returns:
+            Tuple of (excerpt_text, pdf_url)
+        """
+        try:
+            soup = BeautifulSoup(html_content, "html.parser")
+            pdf_url = self._find_pdf_download_link(soup, page_url, article_title=article_title)
+            if not pdf_url:
+                return None, None
+            excerpt = self._download_pdf_excerpt(pdf_url, max_pages=max_pages, max_chars=max_chars)
+            return excerpt, pdf_url
+        except Exception as e:
+            print(f"[Fetcher] Error extracting linked PDF excerpt: {e}")
+            return None, None
     
     def _is_pdf(self, url: str, content_type: str) -> bool:
         """Detect if the content is a PDF based on headers or URL."""
@@ -492,6 +517,39 @@ class ContentFetcher:
                 
         except Exception as e:
             print(f"[Fetcher] Error downloading PDF: {e}")
+            return None
+
+    def _download_pdf_excerpt(
+        self,
+        pdf_url: str,
+        max_pages: int = 5,
+        max_chars: int = 12000,
+    ) -> Optional[str]:
+        """Download a linked PDF and extract a bounded excerpt without saving it."""
+        try:
+            headers = {"User-Agent": self.user_agent}
+            response = requests.get(pdf_url, headers=headers, timeout=self.timeout, allow_redirects=True)
+            response.raise_for_status()
+
+            content_type = response.headers.get("Content-Type", "").lower()
+            if "application/pdf" not in content_type and response.content[:4] != b"%PDF":
+                return None
+
+            reader = PdfReader(io.BytesIO(response.content))
+            text_parts: list[str] = []
+            for page in reader.pages[: max(1, max_pages)]:
+                page_text = page.extract_text() or ""
+                if page_text:
+                    text_parts.append(page_text)
+                if len("\n\n".join(text_parts)) >= max_chars:
+                    break
+
+            excerpt = "\n\n".join(text_parts).strip()
+            if not excerpt:
+                return None
+            return excerpt[: max_chars].strip()
+        except Exception as e:
+            print(f"[Fetcher] Error downloading PDF excerpt: {e}")
             return None
     
     def _process_html(self, html_content: str, page_url: str = "") -> Optional[FetchResult]:

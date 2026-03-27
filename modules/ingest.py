@@ -8,6 +8,7 @@ relevance, downloads content, and stores in database.
 from datetime import datetime, timedelta
 import json
 import os
+from collections import Counter
 from typing import Optional
 
 from bs4 import BeautifulSoup
@@ -20,6 +21,7 @@ from modules.discovery_rss import Candidate, discover_rss_candidates
 from modules.discovery_sitemap import discover_sitemap_candidates
 from modules.fetcher import ContentFetcher
 from modules.filter import check_relevance, extract_keyword_tags, format_filter_result
+from modules.source_metadata import classify_doc_type, is_rijksoverheid_rss_source
 
 
 class MultiSourceIngester:
@@ -42,12 +44,19 @@ class MultiSourceIngester:
             "entries_enriched": 0,
             "entries_rechecked": 0,
             "entries_recovered": 0,
+            "pdf_rechecks_attempted": 0,
+            "pdf_rechecks_recovered": 0,
             "entries_filtered": 0,
             "entries_skipped_existing": 0,
             "entries_fetched": 0,
             "entries_failed": 0,
             "entries_stored": 0,
             "entries_tagged": 0,
+        }
+        self.rijksoverheid_stats = {
+            "candidates_seen": 0,
+            "stored_by_source": Counter(),
+            "stored_by_doc_type": Counter(),
         }
 
     def run(self) -> dict:
@@ -115,10 +124,12 @@ class MultiSourceIngester:
             candidates = candidates[:source_max_candidates]
 
         for candidate in candidates:
-            self._process_candidate(candidate)
+            self._process_candidate(candidate, source)
 
-    def _process_candidate(self, candidate: Candidate) -> None:
+    def _process_candidate(self, candidate: Candidate, source: config.SourceConfig) -> None:
         self.stats["entries_found"] += 1
+        if is_rijksoverheid_rss_source(source):
+            self.rijksoverheid_stats["candidates_seen"] += 1
 
         title = candidate.get("title", "No title")
         link = candidate.get("link", "")
@@ -148,6 +159,7 @@ class MultiSourceIngester:
                 description=description,
                 link=link,
                 filter_result=filter_result,
+                source=source,
             )
         if not filter_result.is_relevant:
             self.stats["entries_filtered"] += 1
@@ -170,6 +182,12 @@ class MultiSourceIngester:
         pub_date = publication_date
         tag_text = f"{title} {description} {result.get('text', '')}"
         keyword_tags = extract_keyword_tags(tag_text)
+        doc_type = classify_doc_type(
+            title=title,
+            url=link,
+            source_name=candidate["source_name"],
+            source_options=source.get("options", {}),
+        )
 
         try:
             doc = add_document(
@@ -184,13 +202,19 @@ class MultiSourceIngester:
                 processing_status="new",
                 discovery_method=candidate.get("discovery_method"),
                 discovery_source_url=candidate.get("discovery_source_url"),
+                doc_type=doc_type,
                 keyword_tags=json.dumps(keyword_tags, ensure_ascii=False),
             )
             self.stats["entries_stored"] += 1
+            if is_rijksoverheid_rss_source(source):
+                self.rijksoverheid_stats["stored_by_source"][candidate["source_name"]] += 1
+                self.rijksoverheid_stats["stored_by_doc_type"][doc_type or "onbekend"] += 1
             if keyword_tags:
                 self.stats["entries_tagged"] += 1
             print(f"       [STORED] ID: {doc.id}, {result['type']}, {len(result['text'])} chars")
             print(f"       [TAGS] {len(keyword_tags)} keyword tags")
+            if doc_type:
+                print(f"       [DOC TYPE] {doc_type}")
             if result["file_path"]:
                 print(f"       [PDF] Saved: {result['file_path']}")
         except Exception as e:
@@ -291,6 +315,7 @@ class MultiSourceIngester:
         description: str,
         link: str,
         filter_result,
+        source: config.SourceConfig,
     ) -> tuple[str, str, object]:
         """
         Second-chance relevance pass using richer page text.
@@ -345,9 +370,56 @@ class MultiSourceIngester:
                 self.stats["entries_recovered"] += 1
                 return retry_title, retry_description, retry_result
 
+            if self._should_recheck_linked_pdf(source):
+                self.stats["pdf_rechecks_attempted"] += 1
+                pdf_excerpt, pdf_url = self.fetcher.extract_linked_pdf_excerpt(
+                    html_content=response.text,
+                    page_url=link,
+                    article_title=retry_title or title,
+                    max_pages=self._get_pdf_recheck_max_pages(source),
+                    max_chars=self._get_pdf_recheck_max_chars(source),
+                )
+                if pdf_excerpt:
+                    pdf_retry_description = " ".join(
+                        part
+                        for part in [
+                            retry_description,
+                            pdf_excerpt,
+                            f"Linked PDF: {pdf_url}" if pdf_url else "",
+                        ]
+                        if part
+                    ).strip()
+                    pdf_retry_result = check_relevance(retry_title, pdf_retry_description)
+                    if pdf_retry_result.is_relevant:
+                        self.stats["pdf_rechecks_recovered"] += 1
+                        self.stats["entries_recovered"] += 1
+                        return retry_title, pdf_retry_description, pdf_retry_result
+
             return retry_title or title, retry_description or description, filter_result
         except Exception:
             return title, description, filter_result
+
+    def _should_recheck_linked_pdf(self, source: config.SourceConfig) -> bool:
+        raw_value = source.get("options", {}).get("recheck_linked_pdf")
+        if isinstance(raw_value, bool):
+            return raw_value
+        if isinstance(raw_value, str):
+            return raw_value.strip().lower() in {"1", "true", "yes", "on"}
+        return False
+
+    def _get_pdf_recheck_max_pages(self, source: config.SourceConfig) -> int:
+        raw_value = source.get("options", {}).get("pdf_recheck_max_pages", 5)
+        try:
+            return max(1, int(raw_value))
+        except (TypeError, ValueError):
+            return 5
+
+    def _get_pdf_recheck_max_chars(self, source: config.SourceConfig) -> int:
+        raw_value = source.get("options", {}).get("pdf_recheck_max_chars", 12000)
+        try:
+            return max(1000, int(raw_value))
+        except (TypeError, ValueError):
+            return 12000
 
     def _load_max_age_days_sitemap_listing(self) -> int:
         """
@@ -433,6 +505,8 @@ class MultiSourceIngester:
     Enriched meta (S/L):   {self.stats['entries_enriched']}
     Rechecked full page:    {self.stats['entries_rechecked']}
     Recovered by recheck:   {self.stats['entries_recovered']}
+    PDF rechecks tried:     {self.stats['pdf_rechecks_attempted']}
+    Recovered by PDF:       {self.stats['pdf_rechecks_recovered']}
     Filtered out:           {self.stats['entries_filtered']}
     Already in DB:          {self.stats['entries_skipped_existing']}
     Fetched:                {self.stats['entries_fetched']}
@@ -442,6 +516,17 @@ class MultiSourceIngester:
     NEW documents stored:   {self.stats['entries_stored']}
 """
         )
+        if self.rijksoverheid_stats["candidates_seen"]:
+            print("Rijksoverheid RSS stats:")
+            print(f"    Candidates seen:       {self.rijksoverheid_stats['candidates_seen']}")
+            if self.rijksoverheid_stats["stored_by_source"]:
+                print("    Stored by source:")
+                for source_name, count in self.rijksoverheid_stats["stored_by_source"].most_common():
+                    print(f"      - {source_name}: {count}")
+            if self.rijksoverheid_stats["stored_by_doc_type"]:
+                print("    Stored by doc_type:")
+                for doc_type, count in self.rijksoverheid_stats["stored_by_doc_type"].most_common():
+                    print(f"      - {doc_type}: {count}")
 
 
 def run_ingestion() -> dict:
