@@ -1,10 +1,10 @@
 """
-OpenAI-backed Step 3 screening execution helpers.
+OpenAI-backed two-lane screening execution helpers.
 
-This module keeps LLM execution backend-controlled and lightweight:
-- build prompt/messages from existing screening helpers
-- call OpenAI Chat Completions
-- parse and validate JSON output
+This module prepares a document once, then supports:
+- factual screening first
+- exploratory screening second
+- shared context selection across both calls
 """
 
 from __future__ import annotations
@@ -17,13 +17,35 @@ import requests
 
 import config
 from modules.screening import (
-    ScreeningOutput,
+    ExploratoryLLMScreeningRequest,
+    ExploratoryScreeningOutput,
+    FactualScreeningOutput,
+    LLMScreeningRequest,
+    NormalizedExploratoryResult,
+    NormalizedFactualResult,
+    ScreeningInput,
+    build_exploratory_llm_screening_request,
+    build_exploratory_screening_user_message,
     build_llm_screening_request,
     build_screening_input,
     build_screening_user_message,
-    compile_screening_system_prompt,
+    compile_exploratory_system_prompt,
+    compile_factual_system_prompt,
+    normalize_exploratory_screening_output,
+    normalize_factual_screening_output,
+    parse_raw_exploratory_screening_output,
+    parse_raw_factual_screening_output,
+    serialize_exploratory_llm_screening_request,
     serialize_llm_screening_request,
-    validate_screening_output,
+    serialize_screening_input,
+)
+from modules.screening_context import (
+    ScreeningContextSelection,
+    load_core_context,
+    load_rvo_footholds,
+    load_strategic_lenses,
+    select_context_for_document,
+    serialize_context_selection,
 )
 
 
@@ -31,55 +53,210 @@ PostFunc = Callable[..., requests.Response]
 
 
 @dataclass(frozen=True)
-class ScreeningRunResult:
+class LaneScreeningRunResult:
     success: bool
     input_json: str
-    output: Optional[ScreeningOutput]
     output_json: Optional[str]
     model: str
     error_text: Optional[str] = None
+    warnings: Optional[list[str]] = None
+    repairs_applied: Optional[list[str]] = None
+
+
+@dataclass(frozen=True)
+class PreparedScreeningRun:
+    screening_input: ScreeningInput
+    screening_input_json: str
+    context_selection: ScreeningContextSelection
+    context_json: str
+    factual_request: LLMScreeningRequest
+    factual_input_json: str
+    factual_system_prompt: str
+    factual_user_message: str
+    model: str
+
+
+@dataclass(frozen=True)
+class FactualScreeningRunResult(LaneScreeningRunResult):
+    output: Optional[FactualScreeningOutput] = None
+    normalized: Optional[NormalizedFactualResult] = None
+
+
+@dataclass(frozen=True)
+class ExploratoryScreeningRunResult(LaneScreeningRunResult):
+    output: Optional[ExploratoryScreeningOutput] = None
+    normalized: Optional[NormalizedExploratoryResult] = None
+
+
+@dataclass(frozen=True)
+class TwoLaneScreeningRunResult:
+    prepared: PreparedScreeningRun
+    factual: FactualScreeningRunResult
+    exploratory: Optional[ExploratoryScreeningRunResult]
+
+
+def prepare_document_for_screening(
+    document: Any,
+    prompts: Optional[dict[str, str]] = None,
+) -> PreparedScreeningRun:
+    """Prepare excerpt, context selection, and factual prompt payload once."""
+    prompt_map = prompts or config.load_prompts()
+    screening_input = build_screening_input(document)
+    context_selection = select_context_for_document(
+        title=screening_input.title,
+        keyword_tags=screening_input.keyword_tags,
+        excerpt_text=screening_input.excerpt_text,
+        lenses=load_strategic_lenses(),
+        footholds=load_rvo_footholds(),
+    )
+    factual_request = build_llm_screening_request(screening_input)
+    factual_input_json = serialize_llm_screening_request(factual_request)
+    factual_system_prompt = compile_factual_system_prompt(
+        prompt_map,
+        selected_lenses=context_selection.selected_lenses,
+        selected_footholds=context_selection.selected_footholds,
+        core_context_text=load_core_context(),
+    )
+    return PreparedScreeningRun(
+        screening_input=screening_input,
+        screening_input_json=serialize_screening_input(screening_input),
+        context_selection=context_selection,
+        context_json=serialize_context_selection(context_selection),
+        factual_request=factual_request,
+        factual_input_json=factual_input_json,
+        factual_system_prompt=factual_system_prompt,
+        factual_user_message=build_screening_user_message(factual_request),
+        model=config.OPENAI_MODEL,
+    )
+
+
+def screen_factual_document(
+    prepared: PreparedScreeningRun,
+    post_func: Optional[PostFunc] = None,
+) -> FactualScreeningRunResult:
+    """Run the factual screening lane."""
+    try:
+        response_text = _call_openai_screening(
+            system_prompt=prepared.factual_system_prompt,
+            user_message=prepared.factual_user_message,
+            model=prepared.model,
+            post_func=post_func,
+        )
+        parsed = _parse_response_json(response_text)
+        normalized = normalize_factual_screening_output(parse_raw_factual_screening_output(parsed))
+        output_json = json.dumps(asdict(normalized.output), ensure_ascii=False, sort_keys=True)
+        return FactualScreeningRunResult(
+            success=True,
+            input_json=prepared.factual_input_json,
+            output=normalized.output,
+            output_json=output_json,
+            model=prepared.model,
+            warnings=normalized.warnings,
+            repairs_applied=normalized.repairs_applied,
+            normalized=normalized,
+        )
+    except Exception as exc:
+        return FactualScreeningRunResult(
+            success=False,
+            input_json=prepared.factual_input_json,
+            output=None,
+            output_json=None,
+            model=prepared.model,
+            error_text=_sanitize_error_text(exc),
+            warnings=[],
+            repairs_applied=[],
+            normalized=None,
+        )
+
+
+def prepare_exploratory_prompt(
+    prepared: PreparedScreeningRun,
+    factual_output: FactualScreeningOutput,
+    prompts: Optional[dict[str, str]] = None,
+) -> tuple[ExploratoryLLMScreeningRequest, str, str, str]:
+    """Build exploratory request, serialized input, system prompt, and user message."""
+    prompt_map = prompts or config.load_prompts()
+    request = build_exploratory_llm_screening_request(prepared.screening_input, factual_output)
+    input_json = serialize_exploratory_llm_screening_request(request)
+    system_prompt = compile_exploratory_system_prompt(
+        prompt_map,
+        selected_lenses=prepared.context_selection.exploratory_lenses,
+        selected_footholds=prepared.context_selection.exploratory_footholds,
+        core_context_text=load_core_context(),
+    )
+    user_message = build_exploratory_screening_user_message(request)
+    return request, input_json, system_prompt, user_message
+
+
+def screen_exploratory_document(
+    prepared: PreparedScreeningRun,
+    factual_output: FactualScreeningOutput,
+    prompts: Optional[dict[str, str]] = None,
+    post_func: Optional[PostFunc] = None,
+) -> ExploratoryScreeningRunResult:
+    """Run the exploratory screening lane after factual success."""
+    _, input_json, system_prompt, user_message = prepare_exploratory_prompt(
+        prepared,
+        factual_output=factual_output,
+        prompts=prompts,
+    )
+
+    try:
+        response_text = _call_openai_screening(
+            system_prompt=system_prompt,
+            user_message=user_message,
+            model=prepared.model,
+            post_func=post_func,
+        )
+        parsed = _parse_response_json(response_text)
+        normalized = normalize_exploratory_screening_output(
+            parse_raw_exploratory_screening_output(parsed),
+            factual_output=factual_output,
+        )
+        output_json = json.dumps(asdict(normalized.output), ensure_ascii=False, sort_keys=True)
+        return ExploratoryScreeningRunResult(
+            success=True,
+            input_json=input_json,
+            output=normalized.output,
+            output_json=output_json,
+            model=prepared.model,
+            warnings=normalized.warnings,
+            repairs_applied=normalized.repairs_applied,
+            normalized=normalized,
+        )
+    except Exception as exc:
+        return ExploratoryScreeningRunResult(
+            success=False,
+            input_json=input_json,
+            output=None,
+            output_json=None,
+            model=prepared.model,
+            error_text=_sanitize_error_text(exc),
+            warnings=[],
+            repairs_applied=[],
+            normalized=None,
+        )
 
 
 def screen_document(
     document: Any,
     prompts: Optional[dict[str, str]] = None,
     post_func: Optional[PostFunc] = None,
-) -> ScreeningRunResult:
-    """Run the full Step 3 screening flow for one document."""
-    screening_input = build_screening_input(document)
-    llm_request = build_llm_screening_request(screening_input)
-    input_json = serialize_llm_screening_request(llm_request)
-    prompt_map = prompts or config.load_prompts()
-    system_prompt = compile_screening_system_prompt(prompt_map)
-    user_message = build_screening_user_message(llm_request)
-    model = config.OPENAI_MODEL
+) -> TwoLaneScreeningRunResult:
+    """Convenience wrapper that runs both lanes in sequence."""
+    prepared = prepare_document_for_screening(document=document, prompts=prompts)
+    factual = screen_factual_document(prepared=prepared, post_func=post_func)
 
-    try:
-        response_text = _call_openai_screening(
-            system_prompt=system_prompt,
-            user_message=user_message,
-            model=model,
-            post_func=post_func,
-        )
-        parsed = _parse_response_json(response_text)
-        validated = validate_screening_output(parsed)
-        output_json = json.dumps(asdict(validated), ensure_ascii=False, sort_keys=True)
-        return ScreeningRunResult(
-            success=True,
-            input_json=input_json,
-            output=validated,
-            output_json=output_json,
-            model=model,
-        )
-    except Exception as exc:
-        return ScreeningRunResult(
-            success=False,
-            input_json=input_json,
-            output=None,
-            output_json=None,
-            model=model,
-            error_text=_sanitize_error_text(exc),
-        )
+    if not factual.success or not factual.output:
+        return TwoLaneScreeningRunResult(prepared=prepared, factual=factual, exploratory=None)
+
+    exploratory = screen_exploratory_document(
+        prepared=prepared,
+        factual_output=factual.output,
+        prompts=prompts,
+        post_func=post_func,
+    )
+    return TwoLaneScreeningRunResult(prepared=prepared, factual=factual, exploratory=exploratory)
 
 
 def _call_openai_screening(

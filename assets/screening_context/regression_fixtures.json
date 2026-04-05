@@ -1,0 +1,50 @@
+[
+  {
+    "id": "fixture_agrarische_droogte",
+    "title": "Droogte dwingt agrarische regio tot andere water- en bodemkeuzes",
+    "keyword_tags": ["droogte", "landbouw", "waterbeschikbaarheid"],
+    "excerpt_text": "Provincies, waterschappen en agrarische collectieven zoeken naar nieuwe afspraken over waterbeschikbaarheid, bodemmaatregelen en teeltkeuzes. Het rapport laat zien dat huidige prikkels in het gebied nog onvoldoende aansluiten op oplopende droogterisico's."
+  },
+  {
+    "id": "fixture_woningbouw_hitte",
+    "title": "Versnelling woningbouw botst met hitte en wateroverlast in stedelijke projecten",
+    "keyword_tags": ["woningbouw", "hitte", "wateroverlast"],
+    "excerpt_text": "Gemeenten willen tempo maken met woningbouw, maar de analyse laat zien dat hitte, piekbuien en beperkte ruimte voor groenblauw ontwerp nog onvoldoende in projectkeuzes zijn verankerd."
+  },
+  {
+    "id": "fixture_miek_lockin",
+    "title": "Nieuwe energiecorridors vragen ruimtelijke keuzes voor 2050",
+    "keyword_tags": ["energie-infrastructuur", "miek", "ruimte"],
+    "excerpt_text": "Het document beschrijft prioritering van kabels, stations en buisleidingen en benoemt dat keuzes nu decennialang doorwerken. Water en bodem worden nog niet overal expliciet meegenomen in de afwegingskaders."
+  },
+  {
+    "id": "fixture_industrie_water",
+    "title": "Industriecluster ziet waterbeschikbaarheid en koelvraag als nieuw vestigingsrisico",
+    "keyword_tags": ["industrie", "watergebruik", "koeling"],
+    "excerpt_text": "Bedrijven in het cluster signaleren dat zoetwaterbeschikbaarheid, vergunningen en koelvraag hun investeringslogica veranderen. Het rapport verbindt dit aan innovatie, verduurzaming en toekomstig verdienvermogen."
+  },
+  {
+    "id": "fixture_gebiedsproces",
+    "title": "Regionaal gebiedsprogramma zoekt integrale afweging tussen natuur, landbouw en woningbouw",
+    "keyword_tags": ["gebiedsproces", "landelijk gebied", "ruimte"],
+    "excerpt_text": "De regio werkt aan een gebiedsagenda waarin woningbouw, landbouw, natuur en water samenkomen. Klimaatrisico's worden genoemd als randvoorwaarde voor vervolgbesluiten."
+  },
+  {
+    "id": "fixture_data_methodiek",
+    "title": "Nieuwe stresstest koppelt hitte en droogte aan investeringskeuzes van gemeenten",
+    "keyword_tags": ["stresstest", "hitte", "droogte"],
+    "excerpt_text": "De methodiek vertaalt klimaatscenario's naar kaartbeelden, kantelpunten en handelingsopties voor lokale investeringen. Gemeenten kunnen de uitkomsten gebruiken in programmering en gebiedsontwikkeling."
+  },
+  {
+    "id": "fixture_eu_innovatie",
+    "title": "Europese call zoekt demonstratieprojecten voor stedelijke droogte en wateroverlast",
+    "keyword_tags": ["eu", "life", "pilot"],
+    "excerpt_text": "De call richt zich op projecten die governance, technologie en uitvoering verbinden rond droogte, wateroverlast en stedelijke weerbaarheid. Samenwerking tussen publieke en private partijen is vereist."
+  },
+  {
+    "id": "fixture_indirect_signaal",
+    "title": "Warmteprogramma noemt tempo en netcapaciteit, maar zwijgt over hitte in kwetsbare wijken",
+    "keyword_tags": ["warmtetransitie", "wijk", "netcongestie"],
+    "excerpt_text": "Het programma beschrijft een versnelde wijkgerichte aanpak voor warmtenetten en renovaties. Hittestress, waterrobuustheid en groenblauwe inrichting worden niet uitgewerkt, terwijl fysieke ingrepen wel gepland zijn."
+  }
+]

@@ -1,10 +1,10 @@
 ﻿# App Functionality and Gameplay Loop
 
 ## Functional Overview (Current State)
-The app operates as a document intelligence workflow with automated ingestion, deterministic screening preparation, backend-controlled LLM screening, and operator inspection tools:
+The app operates as a document intelligence workflow with automated ingestion, deterministic screening preparation, backend-controlled two-lane LLM screening, and operator inspection tools:
 - Automated ingestion: sources are discovered via `rss`, `sitemap`, and `listing` methods, entries are filtered by tiered relevance rules, content is fetched/extracted, and new documents are stored in SQLite.
-- Deterministic screening preparation: stored source text can be cleaned/backfilled into `cleaned_text`, excerpted with rule-based logic, and converted into a compact LLM request shape.
-- Backend LLM screening: eligible documents can be screened in batches through a backend-only OpenAI runner that validates structured output and persists status/results.
+- Deterministic screening preparation: stored source text can be cleaned/backfilled into `cleaned_text`, excerpted with rule-based logic, enriched with curated context selection, and converted into compact factual/exploratory LLM request shapes.
+- Backend LLM screening: eligible documents can be screened in batches through a backend-only OpenAI runner that validates and normalizes structured factual and exploratory output before persisting status/results.
 - Operator UI (Streamlit): users browse and filter documents (including keyword tags), inspect full text and PDFs, preview screening excerpts/request payloads, edit screening prompts, inspect source config, and trigger ingestion/refetch/backfill jobs. The dashboard does not directly execute LLM screening calls.
   - the dashboard uses lightweight signed query-param persistence so login survives reloads and document-detail navigation from card links.
 
@@ -66,19 +66,23 @@ The app operates as a document intelligence workflow with automated ingestion, d
 - Source management page shows multi-source configuration loaded via `load_sources_with_status()`.
 - Pipeline page can run ingestion and PDF refetch and display runtime metrics.
 - Prompt Studio:
-  - edits the 3 screening prompt chunks from `prompts.json`
-  - shows the compiled system prompt
-  - shows the response schema
-  - lets the operator test the exact screening request shape on a sample document.
+  - edits the 6 screening prompt chunks from `prompts.json`
+  - previews the loaded core context, strategic lens catalog, and RVO foothold catalog
+  - shows compiled factual and exploratory system prompts
+  - shows both response schemas
+  - lets the operator test the exact two-call request shape on a sample document.
 - Document detail page shows:
-  - a reader-first main screen with title, source/date/URL, thumbnail, stored short summary, climate-adaptation relevance, explanation, related opgaven/transities, and compact document metadata
+  - a reader-first main screen with title, source/date/URL, thumbnail, a compact score card, structured factual output, selected lenses/footholds, and a separate exploratory section
+  - concise actor and relevance blocks when available from the factual lane (`actor_groups`, `relevance_reasons`)
+  - evidence quotes and uncertainties behind expanders instead of always-visible long text blocks
+  - exploratory memo first, with hypotheses and verification details behind an expander
   - a separate `Advanced` subview for technical inspection:
     - full text
     - PDF/download
     - screening excerpt preview
-    - reduced LLM input JSON
-    - final user message
-    - screening metadata and legacy AI output
+    - reduced factual and exploratory input JSON
+    - factual and exploratory user messages
+    - screening metadata, validation warnings/repairs, raw stored outputs, and legacy AI output
 
 ### 6. Screening Preparation
 - Implemented in `modules/screening.py`.
@@ -90,7 +94,12 @@ The app operates as a document intelligence workflow with automated ingestion, d
   - selects deterministic excerpts from cleaned text
   - uses `keyword_tags`, content type, and PDF heading/keyword heuristics
   - builds a reduced `LLMScreeningRequest` for later API use
-  - compiles a structured request shape (`system` prompt + JSON user message).
+  - compiles a structured factual request shape (`system` prompt + JSON user message).
+- Context selection:
+  - implemented in `modules/screening_context.py`
+  - always includes the Opgave core context plus a scored subset of strategic lenses and RVO footholds
+  - uses weighted lexical matching across `title`, `keyword_tags`, and `excerpt_text`
+  - stores selector diagnostics for dashboard review and debugging
 
 ### 7. Backend LLM Screening
 - Implemented in `modules/llm_screening.py` and `screen_documents.py`.
@@ -98,17 +107,33 @@ The app operates as a document intelligence workflow with automated ingestion, d
   - selects eligible documents from the database
   - skips `completed` rows by default
   - can retry `failed` rows or force-rescreen explicitly
-  - builds the Step 2 request payload
-  - calls OpenAI with the screening prompt and reduced JSON request
-  - validates the JSON response against the controlled screening schema
-  - persists status, model, input payload, output payload, timestamps, and error text
+  - builds the Step 2 request payload once, then runs two LLM lanes:
+    - `factual` lane first
+    - `exploratory` lane second, only after factual success
+  - calls OpenAI with separate factual and exploratory prompts plus reduced JSON requests
+  - validates and normalizes the JSON response against controlled schemas
+  - persists status, model, input payload, output payload, timestamps, context diagnostics, and error text
 - Guardrails:
   - backend-only CLI execution; no user-facing trigger in the dashboard
   - configurable batch size, timeout, retries, and model
   - `completed` results are not overwritten unless explicitly forced
-  - malformed output is marked `failed` instead of being stored as valid screening output
+  - narrow schema mistakes are repaired when possible instead of failing the whole lane
+  - stale factual/exploratory output is cleared on failed reruns so old results do not masquerade as fresh
 
-### 8. Backfill Operations
+### 8. Two-Lane Screening Model
+- Factual lane:
+  - evidence-first summary of what the document says
+  - explicit `what_is_changing`
+  - `actor_groups` and `relevance_reasons` for scan-friendly display
+  - `footholds`, `opgave_signal_score`, `rvo_link_path`, and `score_defense`
+  - `evidence_quotes` and `uncertainties`
+- Exploratory lane:
+  - short strategic memo grounded in the factual lane
+  - `exploration_decision` (`analyze` or `not_needed`)
+  - `0-3` hypotheses with mechanism, footholds, certainty, verification, and evidence refs
+  - post-processing heuristics can shorten or suppress exploratory output on weaker cases
+
+### 9. Backfill Operations
 - PDF backfill:
   - `python refetch_pdfs.py`
 - Keyword-tag backfill:
@@ -125,11 +150,11 @@ The app operates as a document intelligence workflow with automated ingestion, d
 2. Run ingestion via pipeline page (or external `python main.py`).
 3. Open document browser and filter to relevant/new documents (including tag filtering when useful).
 4. Open a specific document detail page.
-5. Inspect the screening preview generated from cleaned text and deterministic excerpt selection.
-6. Review the reader-first detail screen for stored screening results; use `Advanced` only when deeper inspection is needed.
-7. Open Prompt Studio to tune screening prompts and test the exact request shape on sample documents.
+5. Inspect the screening preview generated from cleaned text, deterministic excerpt selection, and selected context.
+6. Review the reader-first detail screen for stored factual and exploratory results; use `Advanced` only when deeper inspection is needed.
+7. Open Prompt Studio to tune screening prompts and test the exact two-call request shape on sample documents.
 8. Run backend screening in controlled batches via `python screen_documents.py --limit N` when ready.
-9. Inspect stored screening results/status in the database or dashboard views.
+9. Re-open documents to inspect score card, actor/relevance blocks, selected context, evidence, and exploratory memo/hypotheses.
 10. Repeat for remaining documents; optionally run backfill jobs.
 
 ## State Model
@@ -145,11 +170,21 @@ The app operates as a document intelligence workflow with automated ingestion, d
 - `NULL`
   - document has not been screened yet.
 - `pending`
-  - screening request payload has been prepared and the document is in progress.
+  - the factual request payload has been prepared and the document is in progress.
 - `completed`
-  - validated screening output is stored in `screening_output_json`.
+  - validated factual screening output is stored in `screening_output_json`.
 - `failed`
   - the most recent screening attempt failed due to API, parsing, or validation problems.
+
+### Exploratory Screening Status Model
+- `NULL`
+  - exploratory lane has not been started yet.
+- `pending`
+  - factual lane succeeded and exploratory is in progress.
+- `completed`
+  - exploratory screening output is stored in `screening_exploratory_output_json`.
+- `failed`
+  - the exploratory lane failed, while factual may still be available.
 
 ## Reliability and Guardrails
 - Ingestion lock:
@@ -198,4 +233,4 @@ The app operates as a document intelligence workflow with automated ingestion, d
   - `KA_MAX_LISTING_PAGES_PER_SOURCE`
   - `KA_MAX_ENTRIES_PER_FEED`
 - Database contract:
-  - `documents` table includes source metadata, discovery metadata, extracted content, cleaned screening text (`cleaned_text`, version/timestamp), keyword tags (`keyword_tags`), screening execution fields (`screening_status`, timestamps, model, input/output JSON, error), and legacy manual AI output fields.
+  - `documents` table includes source metadata, discovery metadata, extracted content, cleaned screening text (`cleaned_text`, version/timestamp), keyword tags (`keyword_tags`), factual screening execution fields, exploratory screening execution fields, selector/context diagnostics, and legacy manual AI output fields.

@@ -38,3 +38,41 @@ Open questions for later:
 - Should this live inside the current dashboard or as a separate app/workflow?
 - Do we want manual triage, stricter auto-promotion, or both?
 - Is `.docx` extraction worth adding for parliament-only sources?
+
+## Coolify Worker Misconfiguration / Container Follow-up
+
+Status: Parked
+
+Context:
+- The supposed ingestion worker in Coolify is currently not running a worker command.
+- It is running the same dashboard startup command as the main app:
+  - `streamlit run dashboard.py --server.address=0.0.0.0 --server.port=8501`
+- The active pipeline run was observed inside the main dashboard container as a child process of Streamlit:
+  - parent: `jgck0wc80ok00co0gss8oogg`
+  - child process: `python main.py`
+
+Relevant container names observed on March 27, 2026:
+- Current dashboard container:
+  - `jgck0wc80ok00co0gss8oogg`
+- Supposed worker container, but actually also running Streamlit:
+  - `pksgooo8o0848sss88g4oc8c-201425259920`
+- Older dashboard container still present:
+  - `jgck0wc80ok00co0gss8oogg-184125005480`
+
+What this means:
+- This is not a fatal architecture mistake.
+- The app still works, and ingestion can still be triggered from the dashboard.
+- The problem is operational clarity and container role separation, not a broken product model.
+- It can lead to confusion, overlapping triggers, and lock-file warnings, but it is fixable without redesigning the application.
+
+Likely cleanup path later:
+- Keep one dashboard service for Streamlit.
+- Replace the current “worker” service with scheduled jobs for:
+  - `python main.py`
+  - later optionally `python screen_documents.py ...`
+- Clean up stale/older dashboard containers once the deployment shape is stabilized.
+
+Open questions for later:
+- Do we want `dashboard + scheduled tasks` only?
+- Or do we truly need a long-running dedicated worker service?
+- Which Coolify project should own ingestion cadence and screening cadence?

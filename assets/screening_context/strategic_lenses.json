@@ -1,0 +1,254 @@
+[
+  {
+    "id": "maatschappelijke_weerbaarheid",
+    "title": "Maatschappelijke weerbaarheid bij RVO-klanten",
+    "core_question": "Welke klimaatimpact raakt concreet burgers, bedrijven of sectoren en welk handelingsperspectief of ondersteuningsgat komt naar voren?",
+    "signals_to_notice": [
+      "hitte",
+      "wateroverlast",
+      "droogte",
+      "overstroming",
+      "kwetsbare groepen",
+      "ondernemers",
+      "handelingsperspectief",
+      "weerbaarheid"
+    ],
+    "why_it_matters": "Deze lens maakt zichtbaar waar klimaatadaptatie via bestaande klantrelaties, ondersteuning en voorwaarden praktisch relevant wordt.",
+    "runtime_guidance": "Gebruik deze lens als het document beschrijft hoe klimaatimpact doorwerkt in dagelijkse praktijk van burgers, bedrijven of sectoren en of extra ondersteuning nodig is.",
+    "selection_terms": [
+      "burger",
+      "bedrijven",
+      "ondernemers",
+      "mkb",
+      "weerbaarheid",
+      "kwetsbaar",
+      "hitte",
+      "wateroverlast",
+      "droogte"
+    ]
+  },
+  {
+    "id": "water_bodem_klimaat_randvoorwaarde",
+    "title": "Water-bodem-klimaat als randvoorwaarde",
+    "core_question": "Dwingt het document tot scherpere ruimtelijke of systeemkeuzes omdat water, bodem en klimaat grenzen stellen aan functies?",
+    "signals_to_notice": [
+      "water en bodem sturend",
+      "niet alles kan overal",
+      "ruimteclaims",
+      "ruimtelijke afweging",
+      "water bodem klimaat",
+      "gebiedskeuzes"
+    ],
+    "why_it_matters": "Deze lens helpt zien wanneer fysieke randvoorwaarden doorwerken in keuzes over wonen, energie, landbouw en gebiedsontwikkeling.",
+    "runtime_guidance": "Gebruik deze lens bij documenten die laten zien dat ontwikkelingen botsen met water, bodem of klimaatcondities.",
+    "selection_terms": [
+      "water",
+      "bodem",
+      "ruimte",
+      "ruimtelijk",
+      "gebiedsontwikkeling",
+      "randvoorwaarde",
+      "niet alles kan overal"
+    ]
+  },
+  {
+    "id": "lockins_lange_levensduur",
+    "title": "Lock-ins door investeringen met lange levensduur",
+    "core_question": "Welke keuzes of investeringen van nu kunnen later lock-ins, schade of hoge aanpassingskosten veroorzaken als klimaatrisico's niet vooraf zijn meegenomen?",
+    "signals_to_notice": [
+      "2050",
+      "2100",
+      "lange levensduur",
+      "investering",
+      "lock-in",
+      "desinvestering",
+      "beschermingskosten"
+    ],
+    "why_it_matters": "De opgave wil dat langetermijnrisico's standaard meewegen in investeringen die decennia doorwerken.",
+    "runtime_guidance": "Gebruik deze lens bij infrastructuur, woningbouw, landbouwsystemen, energie of industrie waar keuzes nu lang worden vastgezet.",
+    "selection_terms": [
+      "investering",
+      "infrastructuur",
+      "woningbouw",
+      "energie-infrastructuur",
+      "2050",
+      "2100",
+      "lock-in",
+      "desinvestering"
+    ]
+  },
+  {
+    "id": "versnelling_vs_toekomstbestendigheid",
+    "title": "Versnelling versus toekomstbestendigheid",
+    "core_question": "Waar zorgt druk op tempo in energie-infrastructuur of woningbouw ervoor dat adaptatie uit beeld dreigt te raken?",
+    "signals_to_notice": [
+      "versnelling",
+      "tempo",
+      "doorbraak",
+      "vergunning",
+      "woningbouwopgave",
+      "netuitbreiding",
+      "later oplossen"
+    ],
+    "why_it_matters": "Tempo kan lock-ins veroorzaken als robuustheid niet vroeg wordt meegenomen in ontwerp, planning of uitvoering.",
+    "runtime_guidance": "Gebruik deze lens bij versnellingsdocumenten en kijk of adaptatie expliciet ontbreekt of naar later wordt geschoven.",
+    "selection_terms": [
+      "versnelling",
+      "tempo",
+      "woningbouw",
+      "netcongestie",
+      "energie-infrastructuur",
+      "vergunning",
+      "doorbraak"
+    ]
+  },
+  {
+    "id": "integratie_in_instrumentarium",
+    "title": "Integratie van adaptatie in instrumentarium",
+    "core_question": "Welke bestaande regelingen, financieringsinstrumenten of uitvoeringsketens kunnen adaptatie standaard meenemen?",
+    "signals_to_notice": [
+      "regeling",
+      "subsidie",
+      "criteria",
+      "financiering",
+      "instrument",
+      "mainstreaming",
+      "uitvoering"
+    ],
+    "why_it_matters": "RVO's meerwaarde zit vaak in het verankeren van adaptatie in bestaande instrumenten en uitvoeringspraktijken.",
+    "runtime_guidance": "Gebruik deze lens als het document gevolgen heeft voor voorwaarden, prikkels, uitvoeringsrollen of subsidieontwerp.",
+    "selection_terms": [
+      "regeling",
+      "subsidie",
+      "instrument",
+      "criteria",
+      "financiering",
+      "uitvoeringsketen",
+      "mainstreaming"
+    ]
+  },
+  {
+    "id": "instrument_frictie_status_quo",
+    "title": "Instrument-frictie en status quo-versterking",
+    "core_question": "Laat het document zien dat bestaand beleid of bestaande steun kwetsbaarheid bestendigt en dat aanpassing van prikkels nodig is?",
+    "signals_to_notice": [
+      "perverse prikkel",
+      "mismatch",
+      "kwetsbaar model",
+      "uitstelgedrag",
+      "status quo",
+      "maladaptatie",
+      "niet meer passend"
+    ],
+    "why_it_matters": "Strategisch relevante signalen zitten vaak juist in fricties tussen oplopende risico's en bestaande prikkelstructuren.",
+    "runtime_guidance": "Gebruik deze lens als een document suggereert dat huidige instrumenten, steun of logica kwetsbaarheid onbedoeld versterken.",
+    "selection_terms": [
+      "prikkel",
+      "mismatch",
+      "kwetsbaarheid",
+      "status quo",
+      "maladaptatie",
+      "verdienmodel",
+      "uitstel"
+    ]
+  },
+  {
+    "id": "gebiedsprocessen_hefboom",
+    "title": "Gebiedsprocessen als hefboom",
+    "core_question": "Welke gebiedsprocessen of regionale afwegingen worden geraakt en hoe kan adaptatie daarin concreet meewegen?",
+    "signals_to_notice": [
+      "gebiedsproces",
+      "regionale afweging",
+      "gebiedsagenda",
+      "governance",
+      "regio",
+      "gebiedsgericht",
+      "integrale afweging"
+    ],
+    "why_it_matters": "Gebiedsprocessen zijn een belangrijke plek waar water-bodem-klimaat in integrale keuzes kan landen.",
+    "runtime_guidance": "Gebruik deze lens bij regionale of gebiedsgerichte documenten waar meerdere opgaven samenkomen.",
+    "selection_terms": [
+      "gebiedsproces",
+      "gebiedsgericht",
+      "regio",
+      "provincie",
+      "regionaal",
+      "integrale afweging",
+      "gebiedsagenda"
+    ]
+  },
+  {
+    "id": "data_en_methodiek",
+    "title": "Van klimaatrisico naar handelingsperspectief met data en methodiek",
+    "core_question": "Biedt het document data, kaarten of methodiek die klimaatrisico's vertalen naar concrete keuzemomenten?",
+    "signals_to_notice": [
+      "stresstest",
+      "adaptatiepad",
+      "kaart",
+      "gis",
+      "risicodata",
+      "methodiek",
+      "indicator"
+    ],
+    "why_it_matters": "Deze lens ondersteunt de ambitie om klimaatrisicodata te koppelen aan portfolio, uitvoering en handelingsperspectief.",
+    "runtime_guidance": "Gebruik deze lens bij documenten die risico's concreet maken via kaarten, paden, indicatoren of analysemethoden.",
+    "selection_terms": [
+      "stresstest",
+      "adaptatiepad",
+      "kaart",
+      "gis",
+      "indicator",
+      "methodiek",
+      "klimaateffectatlas"
+    ]
+  },
+  {
+    "id": "verdienvermogen_en_industrie",
+    "title": "Verdienvermogen, industrie en weerbare economie",
+    "core_question": "Welke economische activiteiten, ketens of investeringsstromen komen onder druk door klimaatrisico's en welke toekomstbestendige verdienmodellen komen in beeld?",
+    "signals_to_notice": [
+      "industrie",
+      "verdienvermogen",
+      "waterbeschikbaarheid",
+      "koeling",
+      "ketenrisico",
+      "vestigingsklimaat",
+      "innovatie"
+    ],
+    "why_it_matters": "De opgave zoekt ook strategische relevantie in weerbare economie, industrie en internationale verdienkansen.",
+    "runtime_guidance": "Gebruik deze lens bij economische of industriële documenten waar water, hitte, logistiek of vergunningen investeringslogica veranderen.",
+    "selection_terms": [
+      "industrie",
+      "economie",
+      "verdienvermogen",
+      "watergebruik",
+      "koeling",
+      "keten",
+      "vestigingsklimaat"
+    ]
+  },
+  {
+    "id": "gaten_in_beleid_en_uitvoering",
+    "title": "Gaten in beleid en uitvoering",
+    "core_question": "Waar signaleert het document een uitvoeringsgat, rolonduidelijkheid of blinde vlek rond adaptatie waarvoor RVO een passende rol kan hebben?",
+    "signals_to_notice": [
+      "niemand eigenaar",
+      "uitvoeringsgat",
+      "blinde vlek",
+      "rolonduidelijkheid",
+      "implementatieprobleem",
+      "ontbrekend instrument"
+    ],
+    "why_it_matters": "Deze lens houdt ruimte voor onverwachte maar passende rollen voor RVO zonder stelselverantwoordelijkheid te claimen.",
+    "runtime_guidance": "Gebruik deze lens als het document laat zien dat beleid of uitvoering nog geen duidelijke route heeft om adaptatie praktisch te organiseren.",
+    "selection_terms": [
+      "uitvoering",
+      "uitvoeringsgat",
+      "blinde vlek",
+      "rol",
+      "implementatie",
+      "ontbrekend instrument",
+      "samenwerking"
+    ]
+  }
+]

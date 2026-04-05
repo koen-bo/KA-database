@@ -42,6 +42,11 @@ SOURCES_FILE = os.path.join(BASE_DIR, "sources.txt")
 LISTING_SELECTORS_FILE = os.path.join(BASE_DIR, "listing_selectors.json")
 
 PROMPTS_FILE = os.path.join(BASE_DIR, "prompts.json")
+SCREENING_CONTEXT_DIR = os.path.join(BASE_DIR, "assets", "screening_context")
+SCREENING_CORE_CONTEXT_FILE = os.path.join(SCREENING_CONTEXT_DIR, "core_context.md")
+SCREENING_LENSES_FILE = os.path.join(SCREENING_CONTEXT_DIR, "strategic_lenses.json")
+SCREENING_FOOTHOLDS_FILE = os.path.join(SCREENING_CONTEXT_DIR, "rvo_footholds.json")
+SCREENING_REGRESSION_FIXTURES_FILE = os.path.join(SCREENING_CONTEXT_DIR, "regression_fixtures.json")
 
 # =============================================================================
 # FETCHER CONFIGURATION
@@ -322,26 +327,36 @@ def load_prompts() -> dict[str, str]:
         return {
             "summary_prompt": "Maak een beknopte samenvatting van de volgende tekst...",
             "relevance_prompt": "Analyseer de relevantie voor de 21 opgaven...",
-            "screening_system_context": (
-                "Je beoordeelt bronnen vanuit het perspectief van RVO als uitvoeringsorganisatie. "
-                "Gebruik klimaatadaptatie als ankerlens. Water en bodem zijn daarbij onderwerpen van interesse binnen klimaatadaptatie, "
-                "niet aparte domeinen of aparte labels. "
-                "Beoordeel niet alleen of iets over klimaatadaptatie gaat, maar ook of het echt past bij RVO's rol en instrumenten. "
-                "Wees terughoudend met topscores voor technisch waterbeheer of primaire waterveiligheid zonder duidelijke RVO-haakjes."
+            "factual_system_intro": (
+                "Je bent documentanalist voor de Opgave Klimaatadaptatie bij RVO. "
+                "Werk feitelijk, sober en evidence-first. Gebruik alleen het excerpt en de meegegeven context. "
+                "Voeg geen externe kennis of strategische speculatie toe."
             ),
-            "screening_task_instructions": (
-                "Schrijf een korte samenvatting vanuit een RVO-uitvoeringsperspectief. "
-                "Beoordeel hoe relevant de bron is voor klimaatadaptatie en voor RVO's rol daarin, en welke cross-opgave of cross-transitie koppelingen echt sterk zijn. "
-                "Forceer geen nearest label als de gecontroleerde vocabulaire niet goed past. "
-                "Gebruik cross_domain_relevance_signal alleen voor echte koppelingen buiten klimaatadaptatie zelf. "
-                "Bij cross_domain_relevance_signal='none' moeten related velden leeg zijn en mag cross_domain_explanation leeg zijn of 'none' zijn. "
-                "Noem water of bodem alleen expliciet als de bron die onderwerpen echt centraal stelt."
+            "factual_task_instructions": (
+                "Vat eerst feitelijk samen wat het document zegt. Maak daarna duidelijk wat verandert, welke actoren en sectoren "
+                "in beeld komen, waarom dit relevant is voor de Opgave Klimaatadaptatie bij RVO, via welke footholds het in de praktijk "
+                "kan landen, welke excerptcitaten dat ondersteunen, en wat onzeker blijft."
             ),
-            "screening_output_contract": (
-                "Geef uitsluitend JSON terug volgens het afgesproken screeningschema met gecontroleerde labels voor opgaven en transities, "
-                "laat related velden leeg als geen sterke match bestaat en altijd wanneer het signaal 'none' is, sta een lege of 'none' cross_domain_explanation toe wanneer het signaal 'none' is, "
-                "behandel climate_adaptation_relevance_score als een combinatie van klimaatadaptatierelevantie en relevantie voor RVO's rol, "
-                "en gebruik 'none' als de sterkste koppeling binnen klimaatadaptatie zelf blijft."
+            "factual_output_contract": (
+                "Geef uitsluitend JSON terug met deze velden: factual_summary (string), what_is_changing (string), "
+                "actors_and_sectors (string), opgave_relevance (string), footholds (array van 1-3 objecten met id en rationale), "
+                "evidence_quotes (array van 2-4 strings), uncertainties (array van 0-3 strings), "
+                "opgave_signal_score (integer 0-10), confidence (number 0-1). Gebruik Nederlands."
+            ),
+            "exploratory_system_intro": (
+                "Je bent strategisch analist voor de Opgave Klimaatadaptatie bij RVO. "
+                "Bouw voort op de factual analyse zonder die te herschrijven. "
+                "Werk hypothese-gedreven, maar benoem onzekerheid expliciet."
+            ),
+            "exploratory_task_instructions": (
+                "Verken welke strategische implicaties, lock-ins, fricties, gaten of koppelkansen uit het document kunnen volgen. "
+                "Formuleer een korte memo en 2-4 hypotheses. Koppel elke hypothese aan een mechanisme, een of meer footholds, "
+                "een zekerheidsoordeel en een manier om te verifieren. Presenteer hypotheses niet als feiten."
+            ),
+            "exploratory_output_contract": (
+                "Geef uitsluitend JSON terug met deze velden: strategic_memo (string), "
+                "hypotheses (array van 2-4 objecten met hypothesis, mechanism, foothold_ids, certainty, verification). "
+                "certainty moet een van likely, possible of speculative zijn. Gebruik Nederlands."
             ),
         }
     except json.JSONDecodeError as e:

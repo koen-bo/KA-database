@@ -1,0 +1,313 @@
+[
+  {
+    "id": "gebouwde_omgeving",
+    "title": "Klimaatadaptatie in de gebouwde omgeving",
+    "description": "Ondersteuning voor gemeenten, corporaties en partners rond klimaatadaptief bouwen, hitteaanpak en financiering.",
+    "leverage": "Procesondersteuning, tools, adviseurs en financieringslogica.",
+    "typical_triggers": [
+      "woningbouwagenda",
+      "hitteplan",
+      "klimaatadaptief bouwen",
+      "wijkontwikkeling"
+    ],
+    "runtime_guidance": "Gebruik deze kaart bij woningbouw, stedelijke inrichting, hitte of wateroverlast in de gebouwde omgeving.",
+    "selection_terms": [
+      "woningbouw",
+      "gebouwde omgeving",
+      "wijk",
+      "hitte",
+      "wateroverlast",
+      "klimaatadaptief bouwen"
+    ]
+  },
+  {
+    "id": "expertteam_woningbouw",
+    "title": "Expertteam Woningbouw en toekomstbestendig bouwen",
+    "description": "RVO-ondersteuning voor innovatief en toekomstbestendig bouwen in woningbouwprocessen.",
+    "leverage": "Expertadvies, kwaliteitscriteria en projectondersteuning.",
+    "typical_triggers": [
+      "versnellingsagenda",
+      "bouwstandaard",
+      "toekomstbestendig bouwen"
+    ],
+    "runtime_guidance": "Gebruik deze kaart bij grootschalige woningbouw of versnellingslogica waar klimaatrobuust ontwerp moet meekomen.",
+    "selection_terms": [
+      "woningbouw",
+      "bouw",
+      "toekomstbestendig",
+      "versnelling",
+      "projectkeuze"
+    ]
+  },
+  {
+    "id": "gebiedsgewijs",
+    "title": "Gebiedsprocessen via GebiedsGewijs",
+    "description": "Gebiedsgerichte ondersteuning waar meerdere opgaven tegelijk om ruimte, prioriteit en afweging vragen.",
+    "leverage": "Procesontwerp, kaartgedreven afweging en verbinden van partijen.",
+    "typical_triggers": [
+      "gebiedsagenda",
+      "integrale afweging",
+      "regionaal programma"
+    ],
+    "runtime_guidance": "Gebruik deze kaart bij integrale gebiedsprocessen en regionale afwegingen tussen natuur, landbouw, energie, wonen en water.",
+    "selection_terms": [
+      "gebiedsproces",
+      "gebiedsgericht",
+      "regio",
+      "integrale afweging",
+      "gebiedsontwikkeling"
+    ]
+  },
+  {
+    "id": "agrarische_wateropgave",
+    "title": "Agrarische wateropgave en gebiedsdocumenten",
+    "description": "Uitvoering rond water- en bodemmaatregelen in agrarische gebieden via gebiedsarrangementen en samenwerkingsvormen.",
+    "leverage": "Gebiedsgerichte uitvoering, maatregelpakketten en samenwerking landbouw-water.",
+    "typical_triggers": [
+      "droogtestrategie",
+      "zoetwater",
+      "waterkwaliteit landbouw",
+      "gebiedsdocument"
+    ],
+    "runtime_guidance": "Gebruik deze kaart bij landbouwdocumenten over water, bodem, droogte en regionale uitvoeringsarrangementen.",
+    "selection_terms": [
+      "landbouw",
+      "agrarisch",
+      "waterbeheer",
+      "bodem",
+      "zoetwater",
+      "gebiedsdocument"
+    ]
+  },
+  {
+    "id": "landelijk_gebied_netwerken",
+    "title": "Ondersteuning transitie landelijk gebied",
+    "description": "Ondersteuning van provincies en gebiedspartijen in het landelijk gebied rond natuur, water en klimaat.",
+    "leverage": "Uitvoering, ondersteuning en verbinding tussen rijk en regio.",
+    "typical_triggers": [
+      "landelijk gebied",
+      "provinciaal programma",
+      "gebiedspartijen"
+    ],
+    "runtime_guidance": "Gebruik deze kaart wanneer klimaatrisico's de uitvoerbaarheid van plannen voor het landelijk gebied raken.",
+    "selection_terms": [
+      "landelijk gebied",
+      "provincie",
+      "gebiedspartijen",
+      "natuur",
+      "water",
+      "klimaat"
+    ]
+  },
+  {
+    "id": "agrarische_klanten_instrumentmix",
+    "title": "Agrarische klanten en instrumentmix",
+    "description": "Klimaatadaptatie voor agrarische ondernemers via informatie, doorverwijzing en instrumentmix zoals GLB, ANLb en fiscale regelingen.",
+    "leverage": "Klantondersteuning, instrumentrouting en normaliseren van adaptatiemaatregelen.",
+    "typical_triggers": [
+      "droogte landbouw",
+      "bodemdaling",
+      "verzilting",
+      "verdienmodel agrarisch"
+    ],
+    "runtime_guidance": "Gebruik deze kaart als het document gaat over klimaatrisico's voor agrariers en implicaties voor stimulansen of handelingsperspectief.",
+    "selection_terms": [
+      "agrari",
+      "landbouw",
+      "glb",
+      "anlb",
+      "verzilting",
+      "bodemdaling",
+      "droogte"
+    ]
+  },
+  {
+    "id": "fiscale_instrumenten",
+    "title": "Fiscale regelingen als adaptatiehefboom",
+    "description": "Investeringen sturen via fiscale prikkels en businesscase-logica.",
+    "leverage": "Prikkelstructuur via investeringsaftrek en criteria.",
+    "typical_triggers": [
+      "mia",
+      "vamil",
+      "eia",
+      "businesscase",
+      "financiele drempel"
+    ],
+    "runtime_guidance": "Gebruik deze kaart als een document vooral over investeringsprikkels, businesscases of financiele drempels spreekt.",
+    "selection_terms": [
+      "mia",
+      "vamil",
+      "eia",
+      "fiscale regeling",
+      "businesscase",
+      "investeringsprikkel"
+    ]
+  },
+  {
+    "id": "grote_wateren_pagw",
+    "title": "Grote wateren en natuur via PAGW",
+    "description": "Projecten rond ecologische waterkwaliteit, natuur en toekomstbestendigheid van grote wateren.",
+    "leverage": "Programmaportefeuille en integrale gebiedskeuzes.",
+    "typical_triggers": [
+      "waterkwaliteit",
+      "grote wateren",
+      "natuurherstel",
+      "pagw"
+    ],
+    "runtime_guidance": "Gebruik deze kaart bij documenten over grote wateren, waterkwaliteit of natuurherstel met implicaties voor toekomstbestendigheid.",
+    "selection_terms": [
+      "grote wateren",
+      "waterkwaliteit",
+      "pagw",
+      "natuurherstel",
+      "ecologisch"
+    ]
+  },
+  {
+    "id": "miek_energie_infra",
+    "title": "Energie-infrastructuurplanning via MIEK",
+    "description": "Planning en prioritering van grootschalige energie-infrastructuur in relatie tot ruimte en schaarste.",
+    "leverage": "Programmakaders, prioritering en ruimtelijke afweging.",
+    "typical_triggers": [
+      "miek",
+      "netuitbreiding",
+      "hoogspanning",
+      "buisleiding"
+    ],
+    "runtime_guidance": "Gebruik deze kaart als uitbreiding of versnelling van energie-infrastructuur ruimtelijke lock-ins kan veroorzaken.",
+    "selection_terms": [
+      "miek",
+      "energie-infrastructuur",
+      "netuitbreiding",
+      "hoogspanning",
+      "buisleiding",
+      "netverzwaring"
+    ]
+  },
+  {
+    "id": "integraal_programmeren_energiesysteem",
+    "title": "Integraal programmeren energiesysteem",
+    "description": "Afwegingskaders en programmeringscycli waarin provincies, gemeenten en netbeheerders keuzes maken over het energiesysteem.",
+    "leverage": "Procesondersteuning, kennisdeling en integrale afwegingskaders.",
+    "typical_triggers": [
+      "energy board",
+      "afwegingskader",
+      "integraal programmeren",
+      "netcongestie"
+    ],
+    "runtime_guidance": "Gebruik deze kaart als water-bodem-klimaat in energiesysteemkeuzes expliciet moet worden meegewogen.",
+    "selection_terms": [
+      "integraal programmeren",
+      "energy board",
+      "afwegingskader",
+      "energiesysteem",
+      "netcongestie"
+    ]
+  },
+  {
+    "id": "lokale_warmtetransitie",
+    "title": "Lokale warmtetransitie en gebiedsgerichte aanpak",
+    "description": "Gebiedsgerichte warmtetransitie waar koppelkansen bestaan met hitte, groenblauw en waterrobuuste wijkingrepen.",
+    "leverage": "Signaleren, ondersteunen en koppelen in wijkprocessen.",
+    "typical_triggers": [
+      "warmtenet",
+      "wijkuitvoeringsplan",
+      "aardgasvrij",
+      "warmteprogramma"
+    ],
+    "runtime_guidance": "Gebruik deze kaart bij wijkgerichte verduurzaming waar fysieke ingrepen kansen of lock-ins voor adaptatie opleveren.",
+    "selection_terms": [
+      "warmte",
+      "warmtenet",
+      "aardgasvrij",
+      "wijkuitvoeringsplan",
+      "lokale warmtetransitie"
+    ]
+  },
+  {
+    "id": "industrie_waterweerbaarheid",
+    "title": "Industrie verduurzaming als ingang voor waterweerbaarheid",
+    "description": "Industrie- en clusterondersteuning waar waterbeschikbaarheid, koeling, vergunningen en ketenrisico's meewegen.",
+    "leverage": "Innovatie-instrumenten, sectornetwerken en ondersteuning van industrieclusters.",
+    "typical_triggers": [
+      "industrieel watergebruik",
+      "koelbehoefte",
+      "clusterplan",
+      "vergunningdruk"
+    ],
+    "runtime_guidance": "Gebruik deze kaart als industriële documenten meer raken dan emissies alleen en ook water, hitte of vestigingsvoorwaarden veranderen.",
+    "selection_terms": [
+      "industrie",
+      "watergebruik",
+      "koeling",
+      "vergunning",
+      "cluster",
+      "vestigingsklimaat"
+    ]
+  },
+  {
+    "id": "life_eu_financiering",
+    "title": "EU-financiering en innovatie via LIFE",
+    "description": "Europese project- en innovatiekansen rond klimaatmitigatie en adaptatie.",
+    "leverage": "Subsidie-informatie, aanvraagondersteuning en projectrouting.",
+    "typical_triggers": [
+      "life",
+      "eu call",
+      "pilot",
+      "demonstratie",
+      "innovatieproject"
+    ],
+    "runtime_guidance": "Gebruik deze kaart als documenten wijzen op Europese financieringskansen of projectmatige routes voor adaptatie-innovatie.",
+    "selection_terms": [
+      "life",
+      "eu",
+      "call",
+      "pilot",
+      "demonstratie",
+      "innovatieproject"
+    ]
+  },
+  {
+    "id": "partners_for_water",
+    "title": "Internationale water- en adaptatiepositie via Partners for Water",
+    "description": "Internationale waterveiligheid en waterzekerheid als programmalijn voor innovatie en samenwerking.",
+    "leverage": "Programmatische route voor kennis, samenwerking en financiering.",
+    "typical_triggers": [
+      "partners for water",
+      "internationale waterveiligheid",
+      "delta",
+      "stedelijke resilience"
+    ],
+    "runtime_guidance": "Gebruik deze kaart bij internationale adaptatie- en waterdocumenten die kansen of lessen voor RVO-praktijk bieden.",
+    "selection_terms": [
+      "partners for water",
+      "internationaal",
+      "waterveiligheid",
+      "waterzekerheid",
+      "delta",
+      "resilience"
+    ]
+  },
+  {
+    "id": "indicatoren_en_pve",
+    "title": "Indicatoren, standaarden en PvE's",
+    "description": "Adaptatie concreet verankeren in normen, indicatoren, programma van eisen en aanbestedingskaders.",
+    "leverage": "Standaardisering en operationalisering van eisen.",
+    "typical_triggers": [
+      "pve",
+      "indicator",
+      "norm",
+      "aanbesteding",
+      "richtlijn"
+    ],
+    "runtime_guidance": "Gebruik deze kaart als een document gaat over normen, indicatoren of criteria waarmee adaptatie structureel kan worden ingebouwd.",
+    "selection_terms": [
+      "indicator",
+      "norm",
+      "pve",
+      "aanbesteding",
+      "richtlijn",
+      "criteria"
+    ]
+  }
+]

@@ -10,9 +10,17 @@ from __future__ import annotations
 from collections import Counter
 from dataclasses import asdict, dataclass
 from datetime import date, datetime
+from functools import lru_cache
 import json
 import re
 from typing import Any, Literal, Optional, TypedDict
+
+from modules.screening_context import (
+    RankedContextItem,
+    format_context_block,
+    load_core_context,
+    load_rvo_footholds,
+)
 
 
 PDF_EXTRACT_DELIMITER = "[PDF EXTRACT]"
@@ -62,25 +70,6 @@ CANONICAL_PDF_HEADINGS = (
     "slotbeschouwing",
 )
 
-TRANSITIES = (
-    "energie_en_klimaattransitie",
-    "duurzaam_landbouw_en_voedselsysteem",
-    "toekomstbestendige_en_digitale_economie",
-)
-
-OPGAVEN = (
-    "co2_reductie",
-    "klimaatadaptatie",
-    "robuust_en_flexibel_energiesysteem",
-    "verduurzamen_energievoorziening",
-    "verduurzamen_gebouwde_omgeving",
-    "verduurzamen_mobiliteit",
-    "vergroening_industrie",
-    "duurzaam_landbouw_en_voedselsysteem",
-    "toekomstbestendige_en_digitale_economie",
-)
-
-
 @dataclass(frozen=True)
 class CleanupResult:
     cleaned_text: str
@@ -113,16 +102,80 @@ class LLMScreeningRequest:
 
 
 @dataclass(frozen=True)
-class ScreeningOutput:
-    short_summary: str
-    climate_adaptation_relevance_score: int
-    climate_adaptation_explanation: str
-    primary_opgave: Optional[str]
-    related_opgaves: list[str]
-    related_transities: list[str]
-    cross_domain_relevance_signal: Literal["none", "possible", "clear"]
-    cross_domain_explanation: str
+class ExploratoryLLMScreeningRequest:
+    title: str
+    source_name: Optional[str]
+    publication_date: Optional[str]
+    keyword_tags: list[str]
+    excerpt_text: str
+    factual_analysis: dict[str, Any]
+
+
+@dataclass(frozen=True)
+class FactualFoothold:
+    id: str
+    rationale: str
+
+
+@dataclass(frozen=True)
+class FactualActorGroup:
+    label: str
+    role: str
+
+
+@dataclass(frozen=True)
+class FactualRelevanceReason:
+    title: str
+    explanation: str
+
+
+@dataclass(frozen=True)
+class FactualScreeningOutput:
+    factual_summary: str
+    what_is_changing: str
+    actors_and_sectors: str
+    actor_groups: list[FactualActorGroup]
+    opgave_relevance: str
+    relevance_reasons: list[FactualRelevanceReason]
+    footholds: list[FactualFoothold]
+    evidence_quotes: list[str]
+    uncertainties: list[str]
+    opgave_signal_score: int
+    rvo_link_path: Literal["direct_operational", "mixed", "strategic_indirect", "weak"]
+    score_defense: str
     confidence: float
+
+
+@dataclass(frozen=True)
+class ExploratoryHypothesis:
+    hypothesis: str
+    mechanism: str
+    foothold_ids: list[str]
+    evidence_refs: list[str]
+    certainty: Literal["likely", "possible", "speculative"]
+    verification: str
+
+
+@dataclass(frozen=True)
+class ExploratoryScreeningOutput:
+    exploration_decision: Literal["analyze", "not_needed"]
+    decision_rationale: str
+    strategic_memo: str
+    hypotheses: list[ExploratoryHypothesis]
+
+
+@dataclass(frozen=True)
+class NormalizedFactualResult:
+    output: FactualScreeningOutput
+    warnings: list[str]
+    repairs_applied: list[str]
+
+
+@dataclass(frozen=True)
+class NormalizedExploratoryResult:
+    output: ExploratoryScreeningOutput
+    warnings: list[str]
+    repairs_applied: list[str]
 
 
 class DocumentLike(TypedDict, total=False):
@@ -139,16 +192,27 @@ class DocumentLike(TypedDict, total=False):
     keyword_tags: Optional[str]
 
 
-class ScreeningOutputDict(TypedDict):
-    short_summary: str
-    climate_adaptation_relevance_score: int
-    climate_adaptation_explanation: str
-    primary_opgave: Optional[str]
-    related_opgaves: list[str]
-    related_transities: list[str]
-    cross_domain_relevance_signal: Literal["none", "possible", "clear"]
-    cross_domain_explanation: str
+class FactualScreeningOutputDict(TypedDict):
+    factual_summary: str
+    what_is_changing: str
+    actors_and_sectors: str
+    actor_groups: list[dict[str, str]]
+    opgave_relevance: str
+    relevance_reasons: list[dict[str, str]]
+    footholds: list[dict[str, str]]
+    evidence_quotes: list[str]
+    uncertainties: list[str]
+    opgave_signal_score: int
+    rvo_link_path: str
+    score_defense: str
     confidence: float
+
+
+class ExploratoryScreeningOutputDict(TypedDict):
+    exploration_decision: str
+    decision_rationale: str
+    strategic_memo: str
+    hypotheses: list[dict[str, Any]]
 
 
 def clean_document_text(
@@ -276,7 +340,7 @@ def serialize_screening_input(payload: ScreeningInput) -> str:
 
 
 def build_llm_screening_request(payload: ScreeningInput) -> LLMScreeningRequest:
-    """Reduce internal screening input to the lean request object sent to the LLM."""
+    """Reduce internal screening input to the lean factual request object sent to the LLM."""
     return LLMScreeningRequest(
         title=payload.title,
         source_name=payload.source_name,
@@ -287,94 +351,662 @@ def build_llm_screening_request(payload: ScreeningInput) -> LLMScreeningRequest:
 
 
 def serialize_llm_screening_request(request: LLMScreeningRequest) -> str:
-    """Serialize the actual request payload that will be sent to the LLM."""
+    """Serialize the actual factual request payload that will be sent to the LLM."""
     return json.dumps(asdict(request), ensure_ascii=False, sort_keys=True)
 
 
-def compile_screening_system_prompt(prompts: dict[str, str]) -> str:
-    """Compile the screening system prompt from separately editable prompt chunks."""
-    keys = (
-        "screening_system_context",
-        "screening_task_instructions",
-        "screening_output_contract",
+def build_exploratory_llm_screening_request(
+    payload: ScreeningInput,
+    factual_output: FactualScreeningOutput,
+) -> ExploratoryLLMScreeningRequest:
+    """Build the exploratory request from the document excerpt plus the factual result."""
+    return ExploratoryLLMScreeningRequest(
+        title=payload.title,
+        source_name=payload.source_name,
+        publication_date=payload.publication_date,
+        keyword_tags=payload.keyword_tags,
+        excerpt_text=payload.excerpt_text,
+        factual_analysis=asdict(factual_output),
     )
+
+
+def serialize_exploratory_llm_screening_request(request: ExploratoryLLMScreeningRequest) -> str:
+    """Serialize the exploratory request payload that will be sent to the LLM."""
+    return json.dumps(asdict(request), ensure_ascii=False, sort_keys=True)
+
+
+def compile_factual_system_prompt(
+    prompts: dict[str, str],
+    selected_lenses: list[RankedContextItem],
+    selected_footholds: list[RankedContextItem],
+    core_context_text: str | None = None,
+) -> str:
+    return _compile_lane_system_prompt(
+        prompts=prompts,
+        intro_key="factual_system_intro",
+        task_key="factual_task_instructions",
+        output_key="factual_output_contract",
+        selected_lenses=selected_lenses,
+        selected_footholds=selected_footholds,
+        core_context_text=core_context_text or load_core_context(),
+    )
+
+
+def compile_exploratory_system_prompt(
+    prompts: dict[str, str],
+    selected_lenses: list[RankedContextItem],
+    selected_footholds: list[RankedContextItem],
+    core_context_text: str | None = None,
+) -> str:
+    return _compile_lane_system_prompt(
+        prompts=prompts,
+        intro_key="exploratory_system_intro",
+        task_key="exploratory_task_instructions",
+        output_key="exploratory_output_contract",
+        selected_lenses=selected_lenses,
+        selected_footholds=selected_footholds,
+        core_context_text=core_context_text or load_core_context(),
+    )
+
+
+def compile_screening_system_prompt(prompts: dict[str, str]) -> str:
+    """Backward-compatible factual prompt compilation without dynamic context injection."""
+    keys = ("factual_system_intro", "factual_task_instructions", "factual_output_contract")
     parts = [str(prompts.get(key, "")).strip() for key in keys if str(prompts.get(key, "")).strip()]
     return "\n\n".join(parts).strip()
 
 
 def build_screening_user_message(request: LLMScreeningRequest) -> str:
-    """Build the user message that carries the reduced request JSON."""
+    """Build the factual user message that carries the reduced request JSON."""
     return f"SCREENING_INPUT_JSON:\n{serialize_llm_screening_request(request)}"
 
 
-def validate_screening_output(data: Any) -> ScreeningOutput:
-    """Validate and normalize structured screening output."""
+def build_exploratory_screening_user_message(request: ExploratoryLLMScreeningRequest) -> str:
+    """Build the exploratory user message that carries the reduced request JSON."""
+    return f"EXPLORATORY_SCREENING_INPUT_JSON:\n{serialize_exploratory_llm_screening_request(request)}"
+
+
+def parse_raw_factual_screening_output(data: Any) -> dict[str, Any]:
+    """Leniently parse a factual screening object before normalization."""
     if not isinstance(data, dict):
-        raise ValueError("screening output must be a JSON object")
+        raise ValueError("factual screening output must be a JSON object")
+    parsed = {
+        "factual_summary": _require_string(data, "factual_summary"),
+        "what_is_changing": _require_string(data, "what_is_changing"),
+        "actors_and_sectors": _require_optional_string(data, "actors_and_sectors"),
+        "actor_groups": data.get("actor_groups", []),
+        "opgave_relevance": _require_string(data, "opgave_relevance"),
+        "relevance_reasons": data.get("relevance_reasons", []),
+        "footholds": data.get("footholds", []),
+        "evidence_quotes": data.get("evidence_quotes", []),
+        "uncertainties": data.get("uncertainties", []),
+        "opgave_signal_score": data.get("opgave_signal_score"),
+        "rvo_link_path": data.get("rvo_link_path"),
+        "score_defense": data.get("score_defense"),
+        "confidence": data.get("confidence"),
+    }
+    if not isinstance(parsed["evidence_quotes"], list):
+        raise ValueError("evidence_quotes must be a list")
+    if not isinstance(parsed["opgave_signal_score"], int):
+        raise ValueError("opgave_signal_score must be an integer")
+    if not isinstance(parsed["confidence"], (int, float)):
+        raise ValueError("confidence must be a number")
+    return parsed
 
-    short_summary = _require_string(data, "short_summary")
-    climate_adaptation_relevance_score = _require_int_in_range(
-        data,
-        "climate_adaptation_relevance_score",
-        min_value=0,
-        max_value=10,
+
+def normalize_factual_screening_output(raw: dict[str, Any]) -> NormalizedFactualResult:
+    """Normalize factual output, repairing narrow issues and collecting warnings."""
+    warnings: list[str] = []
+    repairs: list[str] = []
+    known_foothold_ids = _known_foothold_ids()
+
+    evidence_quotes = _coerce_string_list(raw.get("evidence_quotes"), max_items=4)
+    if len(evidence_quotes) < 2:
+        raise ValueError("factual evidence_quotes must contain at least 2 usable strings")
+    if len(evidence_quotes) != len(_coerce_string_list(raw.get("evidence_quotes"), max_items=999)):
+        warnings.append("Overtollige of lege evidence quotes verwijderd.")
+        repairs.append("trimmed_evidence_quotes")
+
+    uncertainties = _coerce_string_list(raw.get("uncertainties"), max_items=3)
+    if isinstance(raw.get("uncertainties"), list) and len(raw.get("uncertainties", [])) > len(uncertainties):
+        warnings.append("Onzekerheden zijn opgeschoond of afgekapt tot maximaal 3 items.")
+        repairs.append("trimmed_uncertainties")
+
+    actor_groups = _normalize_actor_groups(raw.get("actor_groups"), warnings, repairs)
+    relevance_reasons = _normalize_relevance_reasons(raw.get("relevance_reasons"), warnings, repairs)
+    if not relevance_reasons:
+        fallback_reason = _build_fallback_relevance_reason(raw.get("opgave_relevance"))
+        if fallback_reason:
+            relevance_reasons = [fallback_reason]
+            warnings.append("relevance_reasons ontbraken en zijn afgeleid uit opgave_relevance.")
+            repairs.append("derived_relevance_reasons")
+
+    footholds: list[FactualFoothold] = []
+    raw_footholds = raw.get("footholds")
+    if raw_footholds is None:
+        raw_footholds = []
+    if not isinstance(raw_footholds, list):
+        warnings.append("Footholds hadden een ongeldige vorm en zijn vervangen door een lege lijst.")
+        repairs.append("coerced_footholds_to_empty")
+        raw_footholds = []
+    for item in raw_footholds[:3]:
+        if not isinstance(item, dict):
+            warnings.append("Een ongeldig foothold-item is verwijderd.")
+            repairs.append("dropped_invalid_foothold_shape")
+            continue
+        foothold_id = _string_or_empty(item.get("id"))
+        rationale = _string_or_empty(item.get("rationale"))
+        if not foothold_id or foothold_id not in known_foothold_ids:
+            warnings.append(f"Ongeldig foothold-id verwijderd: {foothold_id or 'leeg'}.")
+            repairs.append("dropped_invalid_factual_foothold_id")
+            continue
+        if not rationale:
+            warnings.append(f"Foothold zonder rationale verwijderd: {foothold_id}.")
+            repairs.append("dropped_factual_foothold_without_rationale")
+            continue
+        footholds.append(FactualFoothold(id=foothold_id, rationale=rationale))
+    if len(raw_footholds) > 3:
+        warnings.append("Footholds zijn afgekapt tot maximaal 3 items.")
+        repairs.append("trimmed_factual_footholds")
+    if raw_footholds and not footholds:
+        warnings.append("Alle factual footholds waren ongeldig en zijn verwijderd.")
+        repairs.append("emptied_invalid_factual_footholds")
+
+    score = int(raw["opgave_signal_score"])
+    if score < 0 or score > 10:
+        raise ValueError("opgave_signal_score must be between 0 and 10")
+    confidence = float(raw["confidence"])
+    if confidence < 0.0 or confidence > 1.0:
+        raise ValueError("confidence must be between 0 and 1")
+
+    rvo_link_path = _coerce_enum_value(
+        raw.get("rvo_link_path"),
+        ("direct_operational", "mixed", "strategic_indirect", "weak"),
     )
-    climate_adaptation_explanation = _require_string(data, "climate_adaptation_explanation")
+    if not rvo_link_path:
+        rvo_link_path = _derive_rvo_link_path(score=score, foothold_count=len(footholds))
+        warnings.append("rvo_link_path ontbrak of was ongeldig en is afgeleid uit score en footholds.")
+        repairs.append("derived_rvo_link_path")
 
-    primary_opgave_raw = data.get("primary_opgave")
-    primary_opgave = None
-    if primary_opgave_raw is not None:
-        primary_opgave = _require_enum_value(primary_opgave_raw, OPGAVEN, "primary_opgave")
+    score_defense = _string_or_empty(raw.get("score_defense"))
+    if not score_defense:
+        score_defense = _derive_score_defense(score=score, rvo_link_path=rvo_link_path)
+        warnings.append("score_defense ontbrak en is automatisch aangevuld.")
+        repairs.append("derived_score_defense")
 
-    related_opgaves = _require_enum_list(data, "related_opgaves", OPGAVEN)
-    related_transities = _require_enum_list(data, "related_transities", TRANSITIES)
-    cross_domain_relevance_signal = _require_enum_value(
-        data.get("cross_domain_relevance_signal"),
-        ("none", "possible", "clear"),
-        "cross_domain_relevance_signal",
+    return NormalizedFactualResult(
+        output=FactualScreeningOutput(
+            factual_summary=_string_or_empty(raw["factual_summary"]),
+            what_is_changing=_string_or_empty(raw["what_is_changing"]),
+            actors_and_sectors=_string_or_empty(raw["actors_and_sectors"]),
+            actor_groups=actor_groups,
+            opgave_relevance=_string_or_empty(raw["opgave_relevance"]),
+            relevance_reasons=relevance_reasons,
+            footholds=footholds,
+            evidence_quotes=evidence_quotes,
+            uncertainties=uncertainties,
+            opgave_signal_score=score,
+            rvo_link_path=rvo_link_path,
+            score_defense=score_defense,
+            confidence=confidence,
+        ),
+        warnings=_dedupe_preserve_order(warnings),
+        repairs_applied=_dedupe_preserve_order(repairs),
     )
-    cross_domain_explanation = _require_optional_string(data, "cross_domain_explanation")
-    if cross_domain_relevance_signal in {"possible", "clear"}:
-        if not cross_domain_explanation:
-            raise ValueError("cross_domain_explanation must be provided when cross_domain_relevance_signal is possible or clear")
-        if "klimaatadaptatie x " not in cross_domain_explanation.lower():
-            raise ValueError("cross_domain_explanation must explicitly describe a 'klimaatadaptatie x <opgave>' linkage")
-        if not related_opgaves and not related_transities:
-            raise ValueError("at least one related opgave or transitie must be provided when cross_domain_relevance_signal is possible or clear")
-    else:
-        if related_opgaves or related_transities:
-            raise ValueError("related_opgaves and related_transities must be empty when cross_domain_relevance_signal is none")
-        if not cross_domain_explanation:
-            cross_domain_explanation = "none"
 
-    confidence = _require_float_in_range(data, "confidence", min_value=0.0, max_value=1.0)
 
-    return ScreeningOutput(
-        short_summary=short_summary,
-        climate_adaptation_relevance_score=climate_adaptation_relevance_score,
-        climate_adaptation_explanation=climate_adaptation_explanation,
-        primary_opgave=primary_opgave,
-        related_opgaves=related_opgaves,
-        related_transities=related_transities,
-        cross_domain_relevance_signal=cross_domain_relevance_signal,
-        cross_domain_explanation=cross_domain_explanation,
-        confidence=confidence,
+def validate_factual_screening_output(data: Any) -> FactualScreeningOutput:
+    """Backward-compatible factual validation returning canonical output only."""
+    return normalize_factual_screening_output(parse_raw_factual_screening_output(data)).output
+
+
+def parse_raw_exploratory_screening_output(data: Any) -> dict[str, Any]:
+    """Leniently parse an exploratory screening object before normalization."""
+    if not isinstance(data, dict):
+        raise ValueError("exploratory screening output must be a JSON object")
+    return {
+        "exploration_decision": data.get("exploration_decision"),
+        "decision_rationale": data.get("decision_rationale"),
+        "strategic_memo": _require_string(data, "strategic_memo"),
+        "hypotheses": data.get("hypotheses", []),
+    }
+
+
+def normalize_exploratory_screening_output(
+    raw: dict[str, Any],
+    factual_output: FactualScreeningOutput,
+) -> NormalizedExploratoryResult:
+    """Normalize exploratory output, repair narrow issues, and apply restraint heuristics."""
+    warnings: list[str] = []
+    repairs: list[str] = []
+    known_foothold_ids = _known_foothold_ids()
+    decision = _coerce_enum_value(raw.get("exploration_decision"), ("analyze", "not_needed"))
+    hypotheses_raw = raw.get("hypotheses")
+    if not isinstance(hypotheses_raw, list):
+        warnings.append("Hypotheses hadden een ongeldige vorm en zijn vervangen door een lege lijst.")
+        repairs.append("coerced_hypotheses_to_empty")
+        hypotheses_raw = []
+    if not decision:
+        decision = "analyze" if hypotheses_raw else "not_needed"
+        warnings.append("exploration_decision ontbrak of was ongeldig en is afgeleid uit het aantal hypotheses.")
+        repairs.append("derived_exploration_decision")
+
+    decision_rationale = _string_or_empty(raw.get("decision_rationale"))
+    if not decision_rationale:
+        decision_rationale = _default_decision_rationale(decision, factual_output)
+        warnings.append("decision_rationale ontbrak en is automatisch aangevuld.")
+        repairs.append("derived_decision_rationale")
+
+    cleaned_hypotheses: list[ExploratoryHypothesis] = []
+    for raw_hypothesis in hypotheses_raw:
+        normalized_hypothesis = _normalize_single_hypothesis(
+            raw_hypothesis,
+            factual_output=factual_output,
+            known_foothold_ids=known_foothold_ids,
+            warnings=warnings,
+            repairs=repairs,
+        )
+        if normalized_hypothesis:
+            cleaned_hypotheses.append(normalized_hypothesis)
+
+    if decision == "not_needed" and cleaned_hypotheses:
+        cleaned_hypotheses = []
+        warnings.append("Hypotheses verwijderd omdat exploration_decision op not_needed staat.")
+        repairs.append("cleared_hypotheses_for_not_needed")
+
+    if factual_output.rvo_link_path == "weak":
+        if decision != "not_needed" or cleaned_hypotheses:
+            warnings.append("Exploratory output omgezet naar not_needed omdat de factual RVO-link weak is.")
+            repairs.append("forced_not_needed_for_weak_rvo_link")
+        decision = "not_needed"
+        cleaned_hypotheses = []
+
+    max_hypotheses = _exploratory_hypothesis_cap(factual_output)
+    if cleaned_hypotheses and len(cleaned_hypotheses) > max_hypotheses:
+        cleaned_hypotheses = cleaned_hypotheses[:max_hypotheses]
+        warnings.append(f"Exploratory hypotheses afgekapt tot {max_hypotheses} op basis van factual sterkte.")
+        repairs.append("capped_exploratory_hypotheses")
+
+    if decision == "analyze" and not cleaned_hypotheses:
+        decision = "not_needed"
+        if not decision_rationale:
+            decision_rationale = _default_decision_rationale(decision, factual_output)
+        warnings.append("Exploratory output omgezet naar not_needed omdat geen houdbare hypotheses overbleven.")
+        repairs.append("converted_empty_analyze_to_not_needed")
+
+    return NormalizedExploratoryResult(
+        output=ExploratoryScreeningOutput(
+            exploration_decision=decision,
+            decision_rationale=decision_rationale,
+            strategic_memo=_string_or_empty(raw["strategic_memo"]),
+            hypotheses=cleaned_hypotheses if decision == "analyze" else [],
+        ),
+        warnings=_dedupe_preserve_order(warnings),
+        repairs_applied=_dedupe_preserve_order(repairs),
     )
+
+
+def validate_exploratory_screening_output(
+    data: Any,
+    allowed_evidence_refs: Optional[set[str]] = None,
+) -> ExploratoryScreeningOutput:
+    """Backward-compatible exploratory validation returning canonical output only."""
+    if allowed_evidence_refs is None:
+        raise ValueError("allowed_evidence_refs is required for exploratory validation")
+    evidence_quotes = [ref.replace("quote_", "quote ") for ref in sorted(allowed_evidence_refs)]
+    factual_stub = FactualScreeningOutput(
+        factual_summary="stub",
+        what_is_changing="stub",
+        actors_and_sectors="stub",
+        actor_groups=[],
+        opgave_relevance="stub",
+        relevance_reasons=[],
+        footholds=[],
+        evidence_quotes=evidence_quotes,
+        uncertainties=[],
+        opgave_signal_score=7,
+        rvo_link_path="mixed",
+        score_defense="stub",
+        confidence=0.5,
+    )
+    normalized = normalize_exploratory_screening_output(parse_raw_exploratory_screening_output(data), factual_stub)
+    invalid_refs = []
+    for hypothesis in normalized.output.hypotheses:
+        for ref in hypothesis.evidence_refs:
+            if ref not in allowed_evidence_refs:
+                invalid_refs.append(ref)
+    if invalid_refs:
+        raise ValueError(f"invalid evidence_refs: {', '.join(sorted(set(invalid_refs)))}")
+    return normalized.output
+
+
+def validate_screening_output(data: Any) -> FactualScreeningOutput:
+    """Backward-compatible alias for factual output validation."""
+    return validate_factual_screening_output(data)
+
+
+def factual_screening_output_schema() -> dict[str, Any]:
+    """Return the canonical factual response schema as a plain dict for prompt/docs use."""
+    return {
+        "factual_summary": "string",
+        "what_is_changing": "string",
+        "actors_and_sectors": "string (optionele fallback voor legacy/proza)",
+        "actor_groups": [{"label": "string", "role": "string"}],
+        "opgave_relevance": "string",
+        "relevance_reasons": [{"title": "string", "explanation": "string"}],
+        "footholds": [{"id": "string", "rationale": "string"}],
+        "evidence_quotes": ["string", "string"],
+        "uncertainties": ["string"],
+        "opgave_signal_score": "integer 0-10",
+        "rvo_link_path": ["direct_operational", "mixed", "strategic_indirect", "weak"],
+        "score_defense": "string",
+        "confidence": "number 0-1",
+    }
+
+
+def exploratory_screening_output_schema() -> dict[str, Any]:
+    """Return the canonical exploratory response schema."""
+    return {
+        "exploration_decision": ["analyze", "not_needed"],
+        "decision_rationale": "string",
+        "strategic_memo": "string",
+        "hypotheses": [
+            {
+                "hypothesis": "string",
+                "mechanism": "string",
+                "foothold_ids": ["string"],
+                "evidence_refs": ["quote_1"],
+                "certainty": ["likely", "possible", "speculative"],
+                "verification": "string",
+            }
+        ],
+    }
 
 
 def screening_output_schema() -> dict[str, Any]:
-    """Return the canonical screening response schema as a plain dict for prompt/docs use."""
-    return {
-        "short_summary": "string",
-        "climate_adaptation_relevance_score": "integer 0-10",
-        "climate_adaptation_explanation": "string",
-        "primary_opgave": ["null", *OPGAVEN],
-        "related_opgaves": list(OPGAVEN),
-        "related_transities": list(TRANSITIES),
-        "cross_domain_relevance_signal": ["none", "possible", "clear"],
-        "cross_domain_explanation": "string containing 'klimaatadaptatie x <other opgave>' when signal is possible/clear; may be empty or 'none' when signal is none",
-        "confidence": "number 0-1",
+    """Backward-compatible alias for the factual schema."""
+    return factual_screening_output_schema()
+
+
+@lru_cache(maxsize=1)
+def _known_foothold_ids() -> set[str]:
+    return {str(item.get("id")).strip() for item in load_rvo_footholds() if str(item.get("id")).strip()}
+
+
+def map_hypothesis_to_evidence_refs(
+    hypothesis_text: str,
+    mechanism_text: str,
+    evidence_quotes: list[str],
+) -> list[str]:
+    """Map a hypothesis to the best matching factual quote refs using token overlap."""
+    combined = f"{hypothesis_text} {mechanism_text}".strip()
+    scored: list[tuple[int, str]] = []
+    for index, quote in enumerate(evidence_quotes, start=1):
+        overlap = _token_overlap_score(combined, quote)
+        if overlap > 0:
+            scored.append((overlap, f"quote_{index}"))
+    scored.sort(key=lambda item: (-item[0], item[1]))
+    return [ref for _, ref in scored[:2]]
+
+
+def _normalize_single_hypothesis(
+    raw_hypothesis: Any,
+    factual_output: FactualScreeningOutput,
+    known_foothold_ids: set[str],
+    warnings: list[str],
+    repairs: list[str],
+) -> Optional[ExploratoryHypothesis]:
+    if not isinstance(raw_hypothesis, dict):
+        warnings.append("Een exploratory hypothese had een ongeldige vorm en is verwijderd.")
+        repairs.append("dropped_invalid_hypothesis_shape")
+        return None
+
+    hypothesis_text = _string_or_empty(raw_hypothesis.get("hypothesis"))
+    mechanism_text = _string_or_empty(raw_hypothesis.get("mechanism"))
+    verification_text = _string_or_empty(raw_hypothesis.get("verification"))
+    if not hypothesis_text or not mechanism_text or not verification_text:
+        warnings.append("Een exploratory hypothese zonder verplichte tekstvelden is verwijderd.")
+        repairs.append("dropped_incomplete_hypothesis")
+        return None
+
+    raw_footholds = raw_hypothesis.get("foothold_ids")
+    foothold_ids = _coerce_string_list(raw_footholds, max_items=3)
+    valid_footholds = [item for item in foothold_ids if item in known_foothold_ids]
+    if len(valid_footholds) < len(foothold_ids):
+        warnings.append("Ongeldige exploratory foothold ids zijn verwijderd.")
+        repairs.append("dropped_invalid_exploratory_foothold_ids")
+
+    evidence_refs = [
+        ref
+        for ref in _coerce_string_list(raw_hypothesis.get("evidence_refs"), max_items=4)
+        if ref in {f"quote_{index}" for index, _ in enumerate(factual_output.evidence_quotes, start=1)}
+    ]
+    if not evidence_refs:
+        evidence_refs = map_hypothesis_to_evidence_refs(
+            hypothesis_text,
+            mechanism_text,
+            factual_output.evidence_quotes,
+        )
+        if evidence_refs:
+            warnings.append("Ontbrekende of ongeldige evidence_refs zijn automatisch aangevuld.")
+            repairs.append("derived_evidence_refs")
+    if not evidence_refs:
+        warnings.append("Een exploratory hypothese zonder bruikbare evidence_refs is verwijderd.")
+        repairs.append("dropped_hypothesis_without_evidence_refs")
+        return None
+
+    strong_grounding = _has_strong_factual_grounding(hypothesis_text, mechanism_text, factual_output)
+    if not valid_footholds and not strong_grounding:
+        warnings.append("Een exploratory hypothese zonder foothold en zonder sterke factual grounding is verwijderd.")
+        repairs.append("dropped_weakly_grounded_hypothesis")
+        return None
+
+    certainty = _coerce_enum_value(raw_hypothesis.get("certainty"), ("likely", "possible", "speculative"))
+    if not certainty:
+        certainty = "possible"
+        warnings.append("Ongeldige certainty is vervangen door possible.")
+        repairs.append("replaced_invalid_certainty")
+    if certainty == "likely" and (not evidence_refs or (not valid_footholds and not strong_grounding)):
+        certainty = "possible"
+        warnings.append("Een likely-hypothese is afgezwakt naar possible wegens beperkte grounding.")
+        repairs.append("downgraded_likely_to_possible")
+
+    return ExploratoryHypothesis(
+        hypothesis=hypothesis_text,
+        mechanism=mechanism_text,
+        foothold_ids=valid_footholds,
+        evidence_refs=evidence_refs,
+        certainty=certainty,
+        verification=verification_text,
+    )
+
+
+def _exploratory_hypothesis_cap(factual_output: FactualScreeningOutput) -> int:
+    if factual_output.rvo_link_path == "weak":
+        return 0
+    if factual_output.opgave_signal_score <= 5:
+        return 1
+    if factual_output.rvo_link_path == "strategic_indirect" and factual_output.opgave_signal_score <= 6:
+        return 2
+    if factual_output.opgave_signal_score >= 7 and factual_output.rvo_link_path in {"mixed", "direct_operational"}:
+        return 3
+    return 2
+
+
+def _has_strong_factual_grounding(
+    hypothesis_text: str,
+    mechanism_text: str,
+    factual_output: FactualScreeningOutput,
+) -> bool:
+    reference_text = " ".join(
+        [
+            factual_output.opgave_relevance,
+            factual_output.score_defense,
+            factual_output.actors_and_sectors,
+            factual_output.what_is_changing,
+        ]
+    )
+    return _token_overlap_score(f"{hypothesis_text} {mechanism_text}", reference_text) >= 2
+
+
+def _normalize_actor_groups(raw_actor_groups: Any, warnings: list[str], repairs: list[str]) -> list[FactualActorGroup]:
+    if raw_actor_groups is None:
+        return []
+    if not isinstance(raw_actor_groups, list):
+        warnings.append("actor_groups hadden een ongeldige vorm en zijn vervangen door een lege lijst.")
+        repairs.append("coerced_actor_groups_to_empty")
+        return []
+
+    actor_groups: list[FactualActorGroup] = []
+    for item in raw_actor_groups[:4]:
+        if not isinstance(item, dict):
+            warnings.append("Een ongeldig actor_group-item is verwijderd.")
+            repairs.append("dropped_invalid_actor_group_shape")
+            continue
+        label = _string_or_empty(item.get("label"))
+        role = _string_or_empty(item.get("role"))
+        if not label or not role:
+            warnings.append("Een actor_group zonder label of role is verwijderd.")
+            repairs.append("dropped_incomplete_actor_group")
+            continue
+        actor_groups.append(FactualActorGroup(label=label, role=role))
+    if len(raw_actor_groups) > 4:
+        warnings.append("actor_groups zijn afgekapt tot maximaal 4 items.")
+        repairs.append("trimmed_actor_groups")
+    return actor_groups
+
+
+def _normalize_relevance_reasons(raw_reasons: Any, warnings: list[str], repairs: list[str]) -> list[FactualRelevanceReason]:
+    if raw_reasons is None:
+        return []
+    if not isinstance(raw_reasons, list):
+        warnings.append("relevance_reasons hadden een ongeldige vorm en zijn vervangen door een lege lijst.")
+        repairs.append("coerced_relevance_reasons_to_empty")
+        return []
+
+    reasons: list[FactualRelevanceReason] = []
+    for item in raw_reasons[:4]:
+        if not isinstance(item, dict):
+            warnings.append("Een ongeldig relevance_reason-item is verwijderd.")
+            repairs.append("dropped_invalid_relevance_reason_shape")
+            continue
+        title = _string_or_empty(item.get("title"))
+        explanation = _string_or_empty(item.get("explanation"))
+        if not title or not explanation:
+            warnings.append("Een relevance_reason zonder title of explanation is verwijderd.")
+            repairs.append("dropped_incomplete_relevance_reason")
+            continue
+        reasons.append(FactualRelevanceReason(title=title, explanation=explanation))
+    if len(raw_reasons) > 4:
+        warnings.append("relevance_reasons zijn afgekapt tot maximaal 4 items.")
+        repairs.append("trimmed_relevance_reasons")
+    return reasons
+
+
+def _build_fallback_relevance_reason(opgave_relevance: Any) -> Optional[FactualRelevanceReason]:
+    explanation = _string_or_empty(opgave_relevance)
+    if not explanation:
+        return None
+    shortened = explanation if len(explanation) <= 220 else explanation[:217].rstrip() + "..."
+    return FactualRelevanceReason(
+        title="Kernreden",
+        explanation=shortened,
+    )
+
+
+def _derive_rvo_link_path(score: int, foothold_count: int) -> Literal["direct_operational", "mixed", "strategic_indirect", "weak"]:
+    if foothold_count >= 2 and score >= 7:
+        return "mixed"
+    if foothold_count >= 1 and score >= 8:
+        return "direct_operational"
+    if score <= 3 and foothold_count == 0:
+        return "weak"
+    return "strategic_indirect"
+
+
+def _derive_score_defense(score: int, rvo_link_path: str) -> str:
+    mapping = {
+        "direct_operational": "Deze score volgt uit een sterke inhoudelijke relevantie met een directe operationele landing voor RVO.",
+        "mixed": "Deze score volgt uit een combinatie van duidelijke inhoudelijke relevantie en een plausibele praktische landing voor RVO.",
+        "strategic_indirect": "Deze score volgt vooral uit strategische relevantie, terwijl de praktische landing voor RVO indirect blijft.",
+        "weak": "Deze score blijft beperkt doordat zowel de inhoudelijke als praktische RVO-link zwak is.",
     }
+    prefix = mapping.get(rvo_link_path, "Deze score volgt uit de gecombineerde inhoudelijke en praktische relevantie voor RVO.")
+    return f"{prefix} Score: {score}/10."
+
+
+def _default_decision_rationale(decision: str, factual_output: FactualScreeningOutput) -> str:
+    if decision == "not_needed":
+        return "De factual analyse biedt al voldoende strategische duiding voor dit document."
+    return f"Er blijft aanvullende strategische verkenning mogelijk bovenop de factual analyse ({factual_output.rvo_link_path}, score {factual_output.opgave_signal_score}/10)."
+
+
+def _coerce_string_list(value: Any, max_items: int) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    cleaned: list[str] = []
+    for item in value:
+        if not isinstance(item, str):
+            continue
+        normalized = item.strip()
+        if normalized and normalized not in cleaned:
+            cleaned.append(normalized)
+        if len(cleaned) >= max_items:
+            break
+    return cleaned
+
+
+def _coerce_enum_value(value: Any, allowed: tuple[str, ...]) -> Optional[str]:
+    if not isinstance(value, str):
+        return None
+    normalized = value.strip()
+    return normalized if normalized in allowed else None
+
+
+def _dedupe_preserve_order(values: list[str]) -> list[str]:
+    seen: set[str] = set()
+    ordered: list[str] = []
+    for value in values:
+        if value and value not in seen:
+            seen.add(value)
+            ordered.append(value)
+    return ordered
+
+
+def _token_overlap_score(left: str, right: str) -> int:
+    left_tokens = set(_meaningful_tokens(left))
+    right_tokens = set(_meaningful_tokens(right))
+    return len(left_tokens & right_tokens)
+
+
+def _meaningful_tokens(text: str) -> list[str]:
+    return [
+        token
+        for token in re.findall(r"[a-zA-ZÀ-ÿ0-9_/-]+", (text or "").lower())
+        if len(token) >= 5
+    ]
+
+
+def _compile_lane_system_prompt(
+    prompts: dict[str, str],
+    intro_key: str,
+    task_key: str,
+    output_key: str,
+    selected_lenses: list[RankedContextItem],
+    selected_footholds: list[RankedContextItem],
+    core_context_text: str,
+) -> str:
+    parts = [
+        str(prompts.get(intro_key, "")).strip(),
+        format_context_block(
+            core_context=core_context_text,
+            selected_lenses=selected_lenses,
+            selected_footholds=selected_footholds,
+        ),
+        str(prompts.get(task_key, "")).strip(),
+        str(prompts.get(output_key, "")).strip(),
+    ]
+    return "\n\n".join([part for part in parts if part]).strip()
 
 
 def _build_html_excerpt(article_text: str, title: str) -> tuple[str, str]:
@@ -1074,6 +1706,28 @@ def _require_optional_string(data: dict[str, Any], key: str) -> str:
     if not isinstance(value, str):
         raise ValueError(f"{key} must be a string")
     return value.strip()
+
+
+def _require_string_list(
+    data: dict[str, Any],
+    key: str,
+    min_items: int,
+    max_items: int,
+) -> list[str]:
+    value = data.get(key)
+    if not isinstance(value, list):
+        raise ValueError(f"{key} must be a list")
+    if len(value) < min_items or len(value) > max_items:
+        raise ValueError(f"{key} must contain between {min_items} and {max_items} items")
+
+    cleaned: list[str] = []
+    for item in value:
+        if not isinstance(item, str) or not item.strip():
+            raise ValueError(f"{key} must contain only non-empty strings")
+        normalized = item.strip()
+        if normalized not in cleaned:
+            cleaned.append(normalized)
+    return cleaned
 
 
 def _require_int_in_range(

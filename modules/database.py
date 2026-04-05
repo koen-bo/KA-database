@@ -53,9 +53,18 @@ class Document(Base):
     screening_requested_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     screened_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     screening_model: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    screening_version: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     screening_input_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     screening_output_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    screening_context_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     screening_error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    screening_exploratory_status: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    screening_exploratory_requested_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    screening_exploratory_screened_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    screening_exploratory_model: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    screening_exploratory_input_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    screening_exploratory_output_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    screening_exploratory_error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     
     # Processing status
     processing_status: Mapped[str] = mapped_column(String(50), default="new")  # 'new', 'analyzed', 'failed'
@@ -143,12 +152,30 @@ def _ensure_schema_columns() -> None:
             conn.execute(text("ALTER TABLE documents ADD COLUMN screened_at DATETIME;"))
         if "screening_model" not in existing_columns:
             conn.execute(text("ALTER TABLE documents ADD COLUMN screening_model TEXT;"))
+        if "screening_version" not in existing_columns:
+            conn.execute(text("ALTER TABLE documents ADD COLUMN screening_version TEXT;"))
         if "screening_input_json" not in existing_columns:
             conn.execute(text("ALTER TABLE documents ADD COLUMN screening_input_json TEXT;"))
         if "screening_output_json" not in existing_columns:
             conn.execute(text("ALTER TABLE documents ADD COLUMN screening_output_json TEXT;"))
+        if "screening_context_json" not in existing_columns:
+            conn.execute(text("ALTER TABLE documents ADD COLUMN screening_context_json TEXT;"))
         if "screening_error" not in existing_columns:
             conn.execute(text("ALTER TABLE documents ADD COLUMN screening_error TEXT;"))
+        if "screening_exploratory_status" not in existing_columns:
+            conn.execute(text("ALTER TABLE documents ADD COLUMN screening_exploratory_status TEXT;"))
+        if "screening_exploratory_requested_at" not in existing_columns:
+            conn.execute(text("ALTER TABLE documents ADD COLUMN screening_exploratory_requested_at DATETIME;"))
+        if "screening_exploratory_screened_at" not in existing_columns:
+            conn.execute(text("ALTER TABLE documents ADD COLUMN screening_exploratory_screened_at DATETIME;"))
+        if "screening_exploratory_model" not in existing_columns:
+            conn.execute(text("ALTER TABLE documents ADD COLUMN screening_exploratory_model TEXT;"))
+        if "screening_exploratory_input_json" not in existing_columns:
+            conn.execute(text("ALTER TABLE documents ADD COLUMN screening_exploratory_input_json TEXT;"))
+        if "screening_exploratory_output_json" not in existing_columns:
+            conn.execute(text("ALTER TABLE documents ADD COLUMN screening_exploratory_output_json TEXT;"))
+        if "screening_exploratory_error" not in existing_columns:
+            conn.execute(text("ALTER TABLE documents ADD COLUMN screening_exploratory_error TEXT;"))
 
 
 def url_exists(url: str) -> bool:
@@ -342,7 +369,13 @@ def get_documents_by_status(status: str) -> list[Document]:
         return session.query(Document).filter(Document.processing_status == status).all()
 
 
-def mark_document_screening_pending(doc_id: int, input_json: str, model: str) -> bool:
+def mark_document_screening_pending(
+    doc_id: int,
+    input_json: str,
+    model: str,
+    screening_version: Optional[str] = None,
+    context_json: Optional[str] = None,
+) -> bool:
     """Mark a document as pending screening and persist the request payload."""
     with get_session() as session:
         doc = session.query(Document).filter(Document.id == doc_id).first()
@@ -352,7 +385,11 @@ def mark_document_screening_pending(doc_id: int, input_json: str, model: str) ->
         doc.screening_status = "pending"
         doc.screening_requested_at = now
         doc.screening_model = model
+        doc.screening_version = screening_version or doc.screening_version
         doc.screening_input_json = input_json
+        doc.screening_output_json = None
+        doc.screened_at = None
+        doc.screening_context_json = context_json or doc.screening_context_json
         doc.screening_error = None
         session.commit()
         return True
@@ -363,6 +400,8 @@ def mark_document_screening_completed(
     input_json: str,
     output_json: str,
     model: str,
+    screening_version: Optional[str] = None,
+    context_json: Optional[str] = None,
 ) -> bool:
     """Persist a completed screening result."""
     with get_session() as session:
@@ -374,8 +413,10 @@ def mark_document_screening_completed(
         doc.screening_requested_at = doc.screening_requested_at or now
         doc.screened_at = now
         doc.screening_model = model
+        doc.screening_version = screening_version or doc.screening_version
         doc.screening_input_json = input_json
         doc.screening_output_json = output_json
+        doc.screening_context_json = context_json or doc.screening_context_json
         doc.screening_error = None
         session.commit()
         return True
@@ -386,6 +427,8 @@ def mark_document_screening_failed(
     input_json: str,
     model: str,
     error_text: str,
+    screening_version: Optional[str] = None,
+    context_json: Optional[str] = None,
 ) -> bool:
     """Persist a failed screening attempt."""
     with get_session() as session:
@@ -397,8 +440,85 @@ def mark_document_screening_failed(
         doc.screening_requested_at = doc.screening_requested_at or now
         doc.screened_at = None
         doc.screening_model = model
+        doc.screening_version = screening_version or doc.screening_version
         doc.screening_input_json = input_json
+        doc.screening_output_json = None
+        doc.screening_context_json = context_json or doc.screening_context_json
         doc.screening_error = error_text[:1000]
+        session.commit()
+        return True
+
+
+def mark_document_exploratory_pending(
+    doc_id: int,
+    input_json: str,
+    model: str,
+    context_json: Optional[str] = None,
+) -> bool:
+    """Mark a document as pending exploratory screening."""
+    with get_session() as session:
+        doc = session.query(Document).filter(Document.id == doc_id).first()
+        if not doc:
+            return False
+        now = datetime.now()
+        doc.screening_exploratory_status = "pending"
+        doc.screening_exploratory_requested_at = now
+        doc.screening_exploratory_model = model
+        doc.screening_exploratory_input_json = input_json
+        doc.screening_exploratory_output_json = None
+        doc.screening_exploratory_screened_at = None
+        doc.screening_context_json = context_json or doc.screening_context_json
+        doc.screening_exploratory_error = None
+        session.commit()
+        return True
+
+
+def mark_document_exploratory_completed(
+    doc_id: int,
+    input_json: str,
+    output_json: str,
+    model: str,
+    context_json: Optional[str] = None,
+) -> bool:
+    """Persist a completed exploratory screening result."""
+    with get_session() as session:
+        doc = session.query(Document).filter(Document.id == doc_id).first()
+        if not doc:
+            return False
+        now = datetime.now()
+        doc.screening_exploratory_status = "completed"
+        doc.screening_exploratory_requested_at = doc.screening_exploratory_requested_at or now
+        doc.screening_exploratory_screened_at = now
+        doc.screening_exploratory_model = model
+        doc.screening_exploratory_input_json = input_json
+        doc.screening_exploratory_output_json = output_json
+        doc.screening_context_json = context_json or doc.screening_context_json
+        doc.screening_exploratory_error = None
+        session.commit()
+        return True
+
+
+def mark_document_exploratory_failed(
+    doc_id: int,
+    input_json: str,
+    model: str,
+    error_text: str,
+    context_json: Optional[str] = None,
+) -> bool:
+    """Persist a failed exploratory screening attempt while keeping factual output intact."""
+    with get_session() as session:
+        doc = session.query(Document).filter(Document.id == doc_id).first()
+        if not doc:
+            return False
+        now = datetime.now()
+        doc.screening_exploratory_status = "failed"
+        doc.screening_exploratory_requested_at = doc.screening_exploratory_requested_at or now
+        doc.screening_exploratory_screened_at = None
+        doc.screening_exploratory_model = model
+        doc.screening_exploratory_input_json = input_json
+        doc.screening_exploratory_output_json = None
+        doc.screening_context_json = context_json or doc.screening_context_json
+        doc.screening_exploratory_error = error_text[:1000]
         session.commit()
         return True
 

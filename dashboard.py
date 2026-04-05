@@ -30,13 +30,34 @@ from sqlalchemy import or_, func
 from modules.database import get_session, Document, init_db
 from modules.fetcher import ContentFetcher
 from modules.screening import (
+    FactualActorGroup,
+    FactualFoothold,
+    FactualRelevanceReason,
+    FactualScreeningOutput,
+    build_exploratory_llm_screening_request,
+    build_exploratory_screening_user_message,
     build_llm_screening_request,
     build_screening_input,
     build_screening_user_message,
-    compile_screening_system_prompt,
+    compile_exploratory_system_prompt,
+    compile_factual_system_prompt,
     count_words,
-    screening_output_schema,
+    exploratory_screening_output_schema,
+    factual_screening_output_schema,
     serialize_llm_screening_request,
+    serialize_exploratory_llm_screening_request,
+)
+from modules.screening_context import (
+    context_titles,
+    load_core_context,
+    load_rvo_footholds,
+    load_strategic_lenses,
+    select_context_for_document,
+)
+from modules.screening_storage import (
+    parse_exploratory_screening_output,
+    parse_factual_screening_output,
+    parse_screening_context,
 )
 from modules.source_metadata import (
     PARLIAMENT_DOC_TYPES,
@@ -272,6 +293,94 @@ st.markdown("""
     color: #64788d;
     font-size: 14px;
     margin-top: 6px;
+}
+.detail-score-card {
+    border: 1px solid #d9e6f2;
+    border-radius: 18px;
+    background: linear-gradient(180deg, #ffffff 0%, #f6f9fc 100%);
+    padding: 18px 18px 16px 18px;
+    box-shadow: 0 2px 10px rgba(12, 24, 36, 0.05);
+}
+.detail-score-value {
+    font-size: 38px;
+    line-height: 1;
+    font-weight: 800;
+    color: #1b2b3a;
+    margin-bottom: 10px;
+}
+.detail-pill {
+    display: inline-block;
+    padding: 5px 10px;
+    border-radius: 999px;
+    background: #edf4fb;
+    color: #274a67;
+    font-size: 12px;
+    font-weight: 700;
+    margin-bottom: 10px;
+}
+.insight-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 12px;
+    margin: 10px 0 6px 0;
+}
+.insight-card {
+    border: 1px solid #e7edf3;
+    border-radius: 16px;
+    background: #fbfdff;
+    padding: 14px 15px;
+}
+.insight-title {
+    color: #203447;
+    font-size: 15px;
+    font-weight: 750;
+    margin-bottom: 6px;
+}
+.insight-text {
+    color: #607489;
+    font-size: 14px;
+    line-height: 1.45;
+}
+.actor-list {
+    display: grid;
+    gap: 10px;
+    margin: 10px 0 6px 0;
+}
+.actor-card {
+    border-left: 4px solid #c8def5;
+    border-radius: 12px;
+    background: #f8fbfe;
+    padding: 12px 14px;
+}
+.actor-label {
+    color: #1f3346;
+    font-size: 14px;
+    font-weight: 750;
+    margin-bottom: 4px;
+}
+.actor-role {
+    color: #62778c;
+    font-size: 14px;
+    line-height: 1.45;
+}
+.hypothesis-card {
+    border: 1px solid #e7edf3;
+    border-radius: 16px;
+    background: #fbfdff;
+    padding: 14px 15px;
+    margin-bottom: 12px;
+}
+.meta-row {
+    color: #687b90;
+    font-size: 13px;
+    line-height: 1.5;
+    margin-top: 6px;
+}
+.subdued-panel {
+    border: 1px solid #e7edf3;
+    border-radius: 16px;
+    background: #f8fbfd;
+    padding: 14px 16px;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -529,17 +638,6 @@ def build_card_summary(full_text: str | None, source_name: str = "", publication
     return summary
 
 
-def parse_screening_output(raw: str | None) -> dict | None:
-    """Parse stored screening JSON safely for detail rendering."""
-    if not raw:
-        return None
-    try:
-        data = json.loads(raw)
-    except Exception:
-        return None
-    return data if isinstance(data, dict) else None
-
-
 def format_detail_date(value: datetime | None) -> str:
     """Format a date or datetime for detail screens."""
     if not value:
@@ -576,6 +674,16 @@ def get_score_interpretation(score: int | None) -> str:
     return "Niet relevant voor RVO's klimaatadaptatie-opgave."
 
 
+def format_rvo_link_path(value: str | None) -> str:
+    mapping = {
+        "direct_operational": "Direct operationeel",
+        "mixed": "Gemengd",
+        "strategic_indirect": "Strategisch indirect",
+        "weak": "Zwak",
+    }
+    return mapping.get((value or "").strip(), "Onbekend")
+
+
 def render_tag_pills(values: list[str], muted: bool = False) -> None:
     """Render compact tag pills for opgaven/transities."""
     if not values:
@@ -583,6 +691,76 @@ def render_tag_pills(values: list[str], muted: bool = False) -> None:
     pill_class = "tag-pill tag-pill-muted" if muted else "tag-pill"
     pills = "".join([f"<span class='{pill_class}'>{html.escape(value)}</span>" for value in values])
     st.markdown(pills, unsafe_allow_html=True)
+
+
+def render_insight_cards(items: list[dict], empty_message: str) -> None:
+    """Render compact insight cards with title and short explanation."""
+    if not items:
+        st.caption(empty_message)
+        return
+    cards = []
+    for item in items:
+        title = html.escape(str(item.get("title") or "Onbenoemd inzicht"))
+        explanation = html.escape(str(item.get("explanation") or "Geen toelichting beschikbaar."))
+        cards.append(
+            f"<div class='insight-card'><div class='insight-title'>{title}</div>"
+            f"<div class='insight-text'>{explanation}</div></div>"
+        )
+    st.markdown(f"<div class='insight-grid'>{''.join(cards)}</div>", unsafe_allow_html=True)
+
+
+def render_actor_cards(items: list[dict], fallback_text: str | None = None) -> None:
+    """Render compact actor cards with a short role explanation."""
+    if not items:
+        if fallback_text:
+            st.write(fallback_text)
+        else:
+            st.caption("Geen actorgroepen gespecificeerd.")
+        return
+    cards = []
+    for item in items:
+        label = html.escape(str(item.get("label") or "Onbekende actorgroep"))
+        role = html.escape(str(item.get("role") or "Geen nadere roltoelichting beschikbaar."))
+        cards.append(
+            f"<div class='actor-card'><div class='actor-label'>{label}</div>"
+            f"<div class='actor-role'>{role}</div></div>"
+        )
+    st.markdown(f"<div class='actor-list'>{''.join(cards)}</div>", unsafe_allow_html=True)
+
+
+def render_hypothesis_cards(hypotheses: list[dict]) -> None:
+    """Render exploratory hypotheses as compact scan-friendly cards."""
+    for index, hypothesis in enumerate(hypotheses, start=1):
+        certainty = html.escape(str(hypothesis.get("certainty") or "onbekend"))
+        hypothesis_text = html.escape(str(hypothesis.get("hypothesis") or "Geen hypothese geformuleerd."))
+        mechanism = html.escape(str(hypothesis.get("mechanism") or "Niet gespecificeerd."))
+        verification = html.escape(str(hypothesis.get("verification") or "Niet gespecificeerd."))
+        footholds = ", ".join(hypothesis.get("foothold_ids") or [])
+        evidence_refs = ", ".join(hypothesis.get("evidence_refs") or [])
+        foothold_line = (
+            f"<div class='meta-row'><strong>Footholds:</strong> {html.escape(footholds)}</div>"
+            if footholds
+            else ""
+        )
+        evidence_line = (
+            f"<div class='meta-row'><strong>Evidence refs:</strong> {html.escape(evidence_refs)}</div>"
+            if evidence_refs
+            else ""
+        )
+        st.markdown(
+            (
+                "<div class='hypothesis-card'>"
+                f"<div class='detail-kicker'>Hypothese {index}</div>"
+                f"<div class='detail-pill'>{certainty}</div>"
+                f"<div><strong>{hypothesis_text}</strong></div>"
+                f"<div class='meta-row'><strong>Mechanisme:</strong> {mechanism}</div>"
+                f"{foothold_line}"
+                f"{evidence_line}"
+                f"<div class='meta-row'><strong>Verificatie:</strong> {verification}</div>"
+                "</div>"
+            ),
+            unsafe_allow_html=True,
+        )
 
 
 @st.cache_data(ttl=86400, show_spinner=False)
@@ -744,9 +922,18 @@ def get_document_details(doc_id: int) -> dict:
                 "screening_requested_at": doc.screening_requested_at,
                 "screened_at": doc.screened_at,
                 "screening_model": doc.screening_model,
+                "screening_version": doc.screening_version,
                 "screening_input_json": doc.screening_input_json,
                 "screening_output_json": doc.screening_output_json,
+                "screening_context_json": doc.screening_context_json,
                 "screening_error": doc.screening_error,
+                "screening_exploratory_status": doc.screening_exploratory_status,
+                "screening_exploratory_requested_at": doc.screening_exploratory_requested_at,
+                "screening_exploratory_screened_at": doc.screening_exploratory_screened_at,
+                "screening_exploratory_model": doc.screening_exploratory_model,
+                "screening_exploratory_input_json": doc.screening_exploratory_input_json,
+                "screening_exploratory_output_json": doc.screening_exploratory_output_json,
+                "screening_exploratory_error": doc.screening_exploratory_error,
                 "ai_summary": doc.ai_summary,
                 "ai_tasks_json": doc.ai_tasks_json,
             }
@@ -889,13 +1076,72 @@ def render_document_detail(doc_id: int):
 
     detail_view = st.session_state.get("detail_subview", "main")
     advanced_focus = st.session_state.get("detail_advanced_focus")
-    screening_output = parse_screening_output(doc.get("screening_output_json"))
+    factual_output = parse_factual_screening_output(doc.get("screening_output_json"))
+    exploratory_output = parse_exploratory_screening_output(doc.get("screening_exploratory_output_json"))
+    screening_input = build_screening_input(doc)
+    context_selection_live = select_context_for_document(
+        title=screening_input.title,
+        keyword_tags=screening_input.keyword_tags,
+        excerpt_text=screening_input.excerpt_text,
+    )
+    screening_context = parse_screening_context(doc.get("screening_context_json")) or {
+        "core_context_version": context_selection_live.core_context_version,
+        "selected_lenses": [
+            {
+                "id": item.id,
+                "title": item.title,
+                "score": item.score,
+                "matched_terms": item.matched_terms,
+                "matched_zones": item.matched_zones,
+            }
+            for item in context_selection_live.selected_lenses
+        ],
+        "selected_footholds": [
+            {
+                "id": item.id,
+                "title": item.title,
+                "score": item.score,
+                "matched_terms": item.matched_terms,
+                "matched_zones": item.matched_zones,
+            }
+            for item in context_selection_live.selected_footholds
+        ],
+        "exploratory_lenses": [
+            {
+                "id": item.id,
+                "title": item.title,
+                "score": item.score,
+                "matched_terms": item.matched_terms,
+                "matched_zones": item.matched_zones,
+            }
+            for item in context_selection_live.exploratory_lenses
+        ],
+        "exploratory_footholds": [
+            {
+                "id": item.id,
+                "title": item.title,
+                "score": item.score,
+                "matched_terms": item.matched_terms,
+                "matched_zones": item.matched_zones,
+            }
+            for item in context_selection_live.exploratory_footholds
+        ],
+        "selection_metadata": context_selection_live.selection_metadata,
+    }
     thumbnail_url = doc.get("thumbnail_url") or get_placeholder_image_data_uri()
     source_label = doc.get("source_name") or "Onbekende bron"
     doc_type_label = doc.get("doc_type") or "onbekend"
     publication_label = format_detail_date(doc.get("publication_date"))
-    score = screening_output.get("climate_adaptation_relevance_score") if screening_output else None
-    score_badge_class = get_score_badge_class(score)
+    score = factual_output.get("opgave_signal_score") if factual_output else None
+    selected_lens_titles = [item.get("title") or item.get("id") for item in screening_context.get("selected_lenses", [])]
+    selected_foothold_titles = [item.get("title") or item.get("id") for item in screening_context.get("selected_footholds", [])]
+    exploratory_lens_titles = [item.get("title") or item.get("id") for item in screening_context.get("exploratory_lenses", [])]
+    exploratory_foothold_titles = [item.get("title") or item.get("id") for item in screening_context.get("exploratory_footholds", [])]
+    factual_validation_warnings = screening_context.get("factual_validation_warnings", []) or []
+    factual_repairs_applied = screening_context.get("factual_repairs_applied", []) or []
+    exploratory_validation_warnings = screening_context.get("exploratory_validation_warnings", []) or []
+    exploratory_repairs_applied = screening_context.get("exploratory_repairs_applied", []) or []
+    foothold_catalog = {item["id"]: item.get("title") or item["id"] for item in load_rvo_footholds()}
 
     if st.button("← Terug naar overzicht"):
         st.session_state.show_detail = False
@@ -923,20 +1169,57 @@ def render_document_detail(doc_id: int):
         st.subheader("Advanced")
         st.caption("Technische screeningweergave en broninspectie.")
 
-        screening_input = build_screening_input(doc)
-        llm_request = build_llm_screening_request(screening_input)
-        llm_request_json = serialize_llm_screening_request(llm_request)
-        llm_user_message = build_screening_user_message(llm_request)
+        factual_request = build_llm_screening_request(screening_input)
+        factual_request_json = doc.get("screening_input_json") or serialize_llm_screening_request(factual_request)
+        factual_user_message = build_screening_user_message(factual_request)
+        exploratory_request_json = doc.get("screening_exploratory_input_json")
+        exploratory_user_message = None
+        if factual_output:
+            exploratory_request = build_exploratory_llm_screening_request(
+                screening_input,
+                FactualScreeningOutput(
+                    factual_summary=factual_output.get("factual_summary", ""),
+                    what_is_changing=factual_output.get("what_is_changing", ""),
+                    actors_and_sectors=factual_output.get("actors_and_sectors", ""),
+                    actor_groups=[
+                        FactualActorGroup(
+                            label=item.get("label", ""),
+                            role=item.get("role", ""),
+                        )
+                        for item in factual_output.get("actor_groups", [])
+                    ],
+                    opgave_relevance=factual_output.get("opgave_relevance", ""),
+                    relevance_reasons=[
+                        FactualRelevanceReason(
+                            title=item.get("title", ""),
+                            explanation=item.get("explanation", ""),
+                        )
+                        for item in factual_output.get("relevance_reasons", [])
+                    ],
+                    footholds=[
+                        FactualFoothold(id=item.get("id", ""), rationale=item.get("rationale", ""))
+                        for item in factual_output.get("footholds", [])
+                    ],
+                    evidence_quotes=factual_output.get("evidence_quotes", []),
+                    uncertainties=factual_output.get("uncertainties", []),
+                    opgave_signal_score=factual_output.get("opgave_signal_score", 0),
+                    rvo_link_path=factual_output.get("rvo_link_path") or "weak",
+                    score_defense=factual_output.get("score_defense", ""),
+                    confidence=float(factual_output.get("confidence") or 0.0),
+                ),
+            )
+            exploratory_user_message = build_exploratory_screening_user_message(exploratory_request)
+            exploratory_request_json = exploratory_request_json or serialize_exploratory_llm_screening_request(exploratory_request)
 
         col_a, col_b, col_c, col_d = st.columns(4)
         with col_a:
             st.metric("Screening status", doc.get("screening_status") or "niet gestart")
         with col_b:
-            st.metric("Model", doc.get("screening_model") or "onbekend")
+            st.metric("Factual model", doc.get("screening_model") or "onbekend")
         with col_c:
             st.metric("Excerpt woorden", count_words(screening_input.excerpt_text))
         with col_d:
-            confidence_value = screening_output.get("confidence") if screening_output else None
+            confidence_value = factual_output.get("confidence") if factual_output else None
             st.metric("Confidence", f"{confidence_value:.2f}" if isinstance(confidence_value, (int, float)) else "n.v.t.")
 
         with st.expander("Volledige tekst", expanded=advanced_focus == "full_text"):
@@ -972,30 +1255,107 @@ def render_document_detail(doc_id: int):
             else:
                 st.info("Geen excerpt beschikbaar.")
 
-        with st.expander("LLM input JSON", expanded=advanced_focus == "llm_json"):
+        with st.expander("Factual input JSON", expanded=advanced_focus == "llm_json"):
             st.text_area(
-                "Reduced request object",
-                llm_request_json,
+                "Reduced factual request object",
+                factual_request_json,
                 height=220,
                 disabled=True,
             )
 
-        with st.expander("Final user message", expanded=advanced_focus == "user_message"):
+        with st.expander("Factual user message", expanded=advanced_focus == "user_message"):
             st.text_area(
-                "User message zoals verstuurd naar de LLM",
-                llm_user_message,
+                "User message zoals verstuurd naar de factual LLM-call",
+                factual_user_message,
                 height=260,
                 disabled=True,
             )
 
+        with st.expander("Selected context", expanded=advanced_focus == "context"):
+            st.text_area(
+                "Persisted screening_context_json",
+                json.dumps(screening_context, ensure_ascii=False, indent=2),
+                height=260,
+                disabled=True,
+            )
+
+        with st.expander("Validation warnings", expanded=False):
+            if factual_validation_warnings or factual_repairs_applied:
+                st.markdown("**Factual warnings / repairs**")
+                for item in factual_validation_warnings:
+                    st.write(f"- {item}")
+                for item in factual_repairs_applied:
+                    st.caption(f"Repair: {item}")
+            else:
+                st.info("Geen factual warnings of repairs opgeslagen.")
+            if exploratory_validation_warnings or exploratory_repairs_applied:
+                st.markdown("**Exploratory warnings / repairs**")
+                for item in exploratory_validation_warnings:
+                    st.write(f"- {item}")
+                for item in exploratory_repairs_applied:
+                    st.caption(f"Repair: {item}")
+            else:
+                st.info("Geen exploratory warnings of repairs opgeslagen.")
+
+        with st.expander("Exploratory input JSON", expanded=False):
+            if exploratory_request_json:
+                st.text_area(
+                    "Reduced exploratory request object",
+                    exploratory_request_json,
+                    height=260,
+                    disabled=True,
+                )
+            else:
+                st.info("Nog geen exploratory request beschikbaar.")
+
+        with st.expander("Exploratory user message", expanded=False):
+            if exploratory_user_message:
+                st.text_area(
+                    "User message zoals verstuurd naar de exploratory LLM-call",
+                    exploratory_user_message,
+                    height=320,
+                    disabled=True,
+                )
+            else:
+                st.info("Nog geen exploratory user message beschikbaar.")
+
+        with st.expander("Stored factual output", expanded=False):
+            if doc.get("screening_output_json"):
+                st.text_area(
+                    "screening_output_json",
+                    doc["screening_output_json"],
+                    height=280,
+                    disabled=True,
+                )
+            else:
+                st.info("Geen factual output opgeslagen.")
+
+        with st.expander("Stored exploratory output", expanded=False):
+            if doc.get("screening_exploratory_output_json"):
+                st.text_area(
+                    "screening_exploratory_output_json",
+                    doc["screening_exploratory_output_json"],
+                    height=280,
+                    disabled=True,
+                )
+            else:
+                st.info("Geen exploratory output opgeslagen.")
+
         if doc.get("screened_at") or doc.get("screening_error"):
             with st.expander("Screening metadata", expanded=advanced_focus == "metadata"):
-                st.write(f"**Status:** {doc.get('screening_status') or 'niet gestart'}")
-                st.write(f"**Model:** {doc.get('screening_model') or 'onbekend'}")
-                st.write(f"**Aangevraagd:** {doc['screening_requested_at'].strftime('%d-%m-%Y %H:%M') if doc.get('screening_requested_at') else 'Onbekend'}")
-                st.write(f"**Gescreend:** {doc['screened_at'].strftime('%d-%m-%Y %H:%M') if doc.get('screened_at') else 'Onbekend'}")
+                st.write(f"**Factual status:** {doc.get('screening_status') or 'niet gestart'}")
+                st.write(f"**Factual model:** {doc.get('screening_model') or 'onbekend'}")
+                st.write(f"**Screening versie:** {doc.get('screening_version') or 'onbekend'}")
+                st.write(f"**Factual aangevraagd:** {doc['screening_requested_at'].strftime('%d-%m-%Y %H:%M') if doc.get('screening_requested_at') else 'Onbekend'}")
+                st.write(f"**Factual gescreend:** {doc['screened_at'].strftime('%d-%m-%Y %H:%M') if doc.get('screened_at') else 'Onbekend'}")
                 if doc.get("screening_error"):
-                    st.error(doc["screening_error"])
+                    st.error(f"Factual error: {doc['screening_error']}")
+                st.write(f"**Exploratory status:** {doc.get('screening_exploratory_status') or 'niet gestart'}")
+                st.write(f"**Exploratory model:** {doc.get('screening_exploratory_model') or 'onbekend'}")
+                st.write(f"**Exploratory aangevraagd:** {doc['screening_exploratory_requested_at'].strftime('%d-%m-%Y %H:%M') if doc.get('screening_exploratory_requested_at') else 'Onbekend'}")
+                st.write(f"**Exploratory gescreend:** {doc['screening_exploratory_screened_at'].strftime('%d-%m-%Y %H:%M') if doc.get('screening_exploratory_screened_at') else 'Onbekend'}")
+                if doc.get("screening_exploratory_error"):
+                    st.error(f"Exploratory error: {doc['screening_exploratory_error']}")
 
         if doc["ai_summary"] or doc["ai_tasks_json"]:
             with st.expander("Legacy AI Output", expanded=False):
@@ -1042,38 +1402,35 @@ def render_document_detail(doc_id: int):
     with header_cols[1]:
         st.image(thumbnail_url, width=250)
 
-    summary_text = None
-    explanation_text = None
-    primary_opgave = None
-    related_opgaves: list[str] = []
-    related_transities: list[str] = []
-    cross_signal = "none"
-    cross_explanation = "none"
-    if screening_output:
-        summary_text = screening_output.get("short_summary")
-        explanation_text = screening_output.get("climate_adaptation_explanation")
-        primary_opgave = screening_output.get("primary_opgave")
-        related_opgaves = screening_output.get("related_opgaves") or []
-        related_transities = screening_output.get("related_transities") or []
-        cross_signal = screening_output.get("cross_domain_relevance_signal") or "none"
-        cross_explanation = screening_output.get("cross_domain_explanation") or "none"
-
     st.markdown("---")
 
-    if screening_output:
+    if factual_output:
         summary_cols = st.columns([2.8, 1.2], gap="large")
         with summary_cols[0]:
-            st.markdown("<div class='detail-kicker'>Korte samenvatting</div>", unsafe_allow_html=True)
-            st.write(summary_text)
+            st.markdown("<div class='detail-kicker'>Kernsamenvatting</div>", unsafe_allow_html=True)
+            st.write(factual_output.get("factual_summary"))
+            if factual_validation_warnings or factual_repairs_applied:
+                st.caption("Factual output is genormaliseerd met warnings/repairs.")
         with summary_cols[1]:
-            st.metric("Klimaatadaptatie relevantie", f"{score}/10")
+            confidence_value = factual_output.get("confidence")
+            score_value = f"{score}/10" if score is not None else "n.v.t."
+            confidence_line = (
+                f"<div class='meta-row'><strong>Confidence:</strong> {confidence_value:.2f}</div>"
+                if isinstance(confidence_value, (int, float))
+                else ""
+            )
             st.markdown(
-                f"<span class='score-badge {score_badge_class}'>{html.escape(get_score_interpretation(score))}</span>",
+                (
+                    "<div class='detail-score-card'>"
+                    "<div class='detail-kicker'>Opgave-signaal</div>"
+                    f"<div class='detail-score-value'>{html.escape(score_value)}</div>"
+                    f"<div class='detail-pill'>{html.escape(format_rvo_link_path(factual_output.get('rvo_link_path')))}</div>"
+                    f"<div class='meta-row'>{html.escape(factual_output.get('score_defense') or 'Geen scoretoelichting beschikbaar.')}</div>"
+                    f"{confidence_line}"
+                    "</div>"
+                ),
                 unsafe_allow_html=True,
             )
-            confidence_value = screening_output.get("confidence")
-            if isinstance(confidence_value, (int, float)):
-                st.caption(f"Confidence: {confidence_value:.2f}")
     else:
         st.info("Nog geen screeningsresultaat beschikbaar voor dit document.")
 
@@ -1081,40 +1438,94 @@ def render_document_detail(doc_id: int):
 
     main_cols = st.columns([2.0, 1], gap="large")
     with main_cols[0]:
-        st.subheader("Waarom relevant?")
-        if explanation_text:
-            st.write(explanation_text)
+        st.subheader("Factual analyse")
+        if factual_output:
+            st.markdown("<div class='detail-kicker'>Wat verandert er?</div>", unsafe_allow_html=True)
+            st.write(factual_output.get("what_is_changing") or "Niet beschikbaar.")
+            st.markdown("<div class='detail-kicker'>Belangrijkste redenen voor RVO</div>", unsafe_allow_html=True)
+            render_insight_cards(
+                factual_output.get("relevance_reasons", []),
+                empty_message="Geen afzonderlijke relevantieredenen beschikbaar.",
+            )
+            if factual_output.get("opgave_relevance"):
+                st.caption(factual_output.get("opgave_relevance"))
+            st.markdown("<div class='detail-kicker'>Actoren</div>", unsafe_allow_html=True)
+            render_actor_cards(
+                factual_output.get("actor_groups", []),
+                fallback_text=factual_output.get("actors_and_sectors") or "Niet beschikbaar.",
+            )
+            if factual_output.get("footholds"):
+                st.markdown("<div class='detail-kicker'>Concrete footholds</div>", unsafe_allow_html=True)
+                for item in factual_output.get("footholds", []):
+                    foothold_title = foothold_catalog.get(item.get("id", ""), item.get("id", "onbekend"))
+                    st.write(f"- {foothold_title}: {item.get('rationale')}")
+            else:
+                st.caption("Geen concrete footholds.")
+            if factual_output.get("evidence_quotes"):
+                with st.expander(f"Bewijs uit het excerpt ({len(factual_output.get('evidence_quotes', []))})", expanded=False):
+                    for index, quote in enumerate(factual_output.get("evidence_quotes", []), start=1):
+                        st.markdown(f"> quote_{index}: {quote}")
+            if factual_output.get("uncertainties"):
+                with st.expander(f"Onzekerheden ({len(factual_output.get('uncertainties', []))})", expanded=False):
+                    for item in factual_output.get("uncertainties", []):
+                        st.write(f"- {item}")
         else:
-            st.write("Nog geen toelichting beschikbaar.")
+            st.write("Nog geen factual analyse beschikbaar.")
 
         st.markdown("")
-        st.subheader("Relevantie voor andere opgaven en transities")
-        if primary_opgave:
-            st.markdown("<div class='detail-kicker'>Primaire opgave</div>", unsafe_allow_html=True)
-            render_tag_pills([primary_opgave])
-        if related_opgaves:
-            st.markdown("<div class='detail-kicker'>Gerelateerde opgaven</div>", unsafe_allow_html=True)
-            render_tag_pills(related_opgaves)
-        if related_transities:
-            st.markdown("<div class='detail-kicker'>Gerelateerde transities</div>", unsafe_allow_html=True)
-            render_tag_pills(related_transities, muted=True)
-        if cross_signal in {"possible", "clear"} and cross_explanation and cross_explanation != "none":
-            st.markdown("<div class='detail-kicker'>Cross-opgave toelichting</div>", unsafe_allow_html=True)
-            st.write(cross_explanation)
-        elif screening_output:
-            st.caption("Geen duidelijke cross-opgave koppeling.")
+        st.subheader("Exploratory analyse")
+        if exploratory_output:
+            if exploratory_output.get("exploration_decision") == "not_needed":
+                rationale_text = exploratory_output.get("decision_rationale") or "De factual analyse dekt de belangrijkste strategische waarde al af."
+                memo_text = exploratory_output.get("strategic_memo") or ""
+                memo_block = f"<div class='meta-row'>{html.escape(memo_text)}</div>" if memo_text else ""
+                st.markdown(
+                    (
+                        "<div class='subdued-panel'>"
+                        "<div class='detail-kicker'>Geen exploratory analyse nodig</div>"
+                        f"<div>{html.escape(rationale_text)}</div>"
+                        f"{memo_block}"
+                        "</div>"
+                    ),
+                    unsafe_allow_html=True,
+                )
+            else:
+                if exploratory_validation_warnings or exploratory_repairs_applied:
+                    st.caption("Exploratory output is genormaliseerd met warnings/repairs.")
+                if exploratory_output.get("decision_rationale"):
+                    st.caption(exploratory_output.get("decision_rationale"))
+                st.markdown("<div class='detail-kicker'>Strategische memo</div>", unsafe_allow_html=True)
+                st.write(exploratory_output.get("strategic_memo"))
+                hypotheses = exploratory_output.get("hypotheses", [])
+                if hypotheses:
+                    with st.expander(f"Hypothesen en verificatie ({len(hypotheses)})", expanded=False):
+                        render_hypothesis_cards(hypotheses)
+        elif doc.get("screening_exploratory_status") == "failed":
+            st.warning("Exploratory analyse is mislukt, maar de factual analyse is wel opgeslagen.")
         else:
-            st.write("Nog geen screeningsanalyse beschikbaar.")
+            st.write("Nog geen exploratory analyse beschikbaar.")
     with main_cols[1]:
-        st.subheader("Documentgegevens")
-        st.write(f"**Bron:** {source_label}")
-        st.write(f"**Publicatiedatum:** {publication_label}")
-        st.write(f"**Documenttype:** {doc_type_label}")
-        st.write(f"**Type:** {doc.get('content_type') or 'Onbekend'}")
-        st.write(f"**PDF beschikbaar:** {'Ja' if doc.get('local_file_path') else 'Nee'}")
-        st.write(f"**Screening status:** {doc.get('screening_status') or 'Niet gestart'}")
-        if doc.get("screened_at"):
-            st.write(f"**Gescreend op:** {doc['screened_at'].strftime('%d-%m-%Y %H:%M')}")
+        st.subheader("Strategische context")
+        if factual_validation_warnings or factual_repairs_applied or exploratory_validation_warnings or exploratory_repairs_applied:
+            st.caption("Deze screening is genormaliseerd; details staan in Advanced.")
+        st.markdown("<div class='detail-kicker'>Geselecteerde lenzen</div>", unsafe_allow_html=True)
+        if selected_lens_titles:
+            render_tag_pills(selected_lens_titles)
+        else:
+            st.caption("Geen lenzen geselecteerd.")
+        st.markdown("<div class='detail-kicker'>Geselecteerde footholds</div>", unsafe_allow_html=True)
+        if selected_foothold_titles:
+            render_tag_pills(selected_foothold_titles, muted=True)
+        else:
+            st.caption("Geen footholds geselecteerd.")
+        if screening_context.get("has_selector_miss"):
+            miss_ids = screening_context.get("factual_selector_miss_ids", [])
+            if miss_ids:
+                st.caption(f"Selector miss bij factual output: {', '.join(miss_ids)}")
+        if factual_validation_warnings or factual_repairs_applied:
+            st.caption(f"Factual warnings: {len(factual_validation_warnings)} | repairs: {len(factual_repairs_applied)}")
+        if exploratory_validation_warnings or exploratory_repairs_applied:
+            st.caption(f"Exploratory warnings: {len(exploratory_validation_warnings)} | repairs: {len(exploratory_repairs_applied)}")
 
 
 # =============================================================================
@@ -1633,44 +2044,60 @@ elif page == "📡 RSS Feeds":
 
 elif page == "💬 Prompt Manager":
     st.title("Screening Prompt Studio")
-    st.write("Beheer de screening-prompts en bekijk exact welke request-shape straks naar de LLM gaat.")
+    st.write("Beheer de twee-lane screening-prompts en bekijk welke context, prompt en request-shapes straks naar de LLM gaan.")
 
     prompts = config.load_prompts()
+    core_context_text = load_core_context()
+    strategic_lenses = load_strategic_lenses()
+    rvo_footholds = load_rvo_footholds()
 
-    screening_system_context = st.text_area(
-        "1. System Context",
-        value=prompts.get("screening_system_context", ""),
+    factual_system_intro = st.text_area(
+        "1. Factual System Intro",
+        value=prompts.get("factual_system_intro", ""),
         height=180,
-        help="RVO-perspectief, klimaatadaptatie als ankerlens en interpretatiekader.",
+        help="Rol en guardrails voor de factual documentanalist.",
     )
-    screening_task_instructions = st.text_area(
-        "2. Task Instructions",
-        value=prompts.get("screening_task_instructions", ""),
+    factual_task_instructions = st.text_area(
+        "2. Factual Task Instructions",
+        value=prompts.get("factual_task_instructions", ""),
         height=180,
-        help="Wat het model precies moet doen met de bron en welke nadruk de samenvatting moet leggen.",
+        help="Wat de factual lane precies moet doen met het excerpt en de context.",
     )
-    screening_output_contract = st.text_area(
-        "3. Output Contract",
-        value=prompts.get("screening_output_contract", ""),
+    factual_output_contract = st.text_area(
+        "3. Factual Output Contract",
+        value=prompts.get("factual_output_contract", ""),
         height=200,
-        help="Strikte JSON-outputregels en gecontroleerde labels voor opgaven en transities.",
+        help="Strikte JSON-outputregels voor evidence-first factual output.",
     )
-
-    compiled_prompt = compile_screening_system_prompt(
-        {
-            "screening_system_context": screening_system_context,
-            "screening_task_instructions": screening_task_instructions,
-            "screening_output_contract": screening_output_contract,
-        }
+    exploratory_system_intro = st.text_area(
+        "4. Exploratory System Intro",
+        value=prompts.get("exploratory_system_intro", ""),
+        height=180,
+        help="Rol en guardrails voor de exploratory strategist.",
+    )
+    exploratory_task_instructions = st.text_area(
+        "5. Exploratory Task Instructions",
+        value=prompts.get("exploratory_task_instructions", ""),
+        height=180,
+        help="Wat de exploratory lane precies moet verkennen zonder de feiten te herschrijven.",
+    )
+    exploratory_output_contract = st.text_area(
+        "6. Exploratory Output Contract",
+        value=prompts.get("exploratory_output_contract", ""),
+        height=180,
+        help="Strikte JSON-outputregels voor hypotheses en verification.",
     )
 
     if st.button("💾 Opslaan Screening Prompts", type="primary"):
         new_prompts = dict(prompts)
         new_prompts.update(
             {
-                "screening_system_context": screening_system_context,
-                "screening_task_instructions": screening_task_instructions,
-                "screening_output_contract": screening_output_contract,
+                "factual_system_intro": factual_system_intro,
+                "factual_task_instructions": factual_task_instructions,
+                "factual_output_contract": factual_output_contract,
+                "exploratory_system_intro": exploratory_system_intro,
+                "exploratory_task_instructions": exploratory_task_instructions,
+                "exploratory_output_contract": exploratory_output_contract,
             }
         )
         if config.save_prompts(new_prompts):
@@ -1678,27 +2105,40 @@ elif page == "💬 Prompt Manager":
         else:
             st.error("Fout bij opslaan prompts")
 
-    with st.expander("Compiled System Prompt", expanded=True):
+    with st.expander("Core Context Preview", expanded=False):
         st.text_area(
-            "Samengevoegde system prompt",
-            compiled_prompt,
+            "core_context.md",
+            core_context_text,
             height=320,
             disabled=True,
         )
 
+    with st.expander("Strategic Lens Catalog", expanded=False):
+        st.code(json.dumps(strategic_lenses, ensure_ascii=False, indent=2), language="json")
+
+    with st.expander("RVO Foothold Catalog", expanded=False):
+        st.code(json.dumps(rvo_footholds, ensure_ascii=False, indent=2), language="json")
+
     st.divider()
     st.subheader("Request Shape")
-    st.caption("De screening-call bestaat uit een system prompt, een compacte JSON user payload en een strikte JSON response.")
-    col1, col2, col3 = st.columns(3)
+    st.caption("Per document draaien er twee calls: factual eerst, exploratory daarna.")
+    col1, col2, col3, col4 = st.columns(4)
     with col1:
-        st.info("`system`\n\n3 prompt chunks, samengevoegd in vaste volgorde.")
+        st.info("`factual system`\n\nPrompt chunks plus geselecteerde context.")
     with col2:
-        st.info("`user`\n\nReduced JSON payload met titel, bron, datum, tags en excerpt.")
+        st.info("`factual user`\n\nTitel, bron, datum, tags en excerpt.")
     with col3:
-        st.info("`response`\n\nStrikte JSON volgens het screeningschema.")
+        st.info("`exploratory system`\n\nEigen rol en kleinere contextsubset.")
+    with col4:
+        st.info("`exploratory user`\n\nExcerpt plus factual output als basis.")
 
-    with st.expander("Response Schema", expanded=False):
-        st.code(json.dumps(screening_output_schema(), ensure_ascii=False, indent=2), language="json")
+    schema_cols = st.columns(2)
+    with schema_cols[0]:
+        with st.expander("Factual Response Schema", expanded=False):
+            st.code(json.dumps(factual_screening_output_schema(), ensure_ascii=False, indent=2), language="json")
+    with schema_cols[1]:
+        with st.expander("Exploratory Response Schema", expanded=False):
+            st.code(json.dumps(exploratory_screening_output_schema(), ensure_ascii=False, indent=2), language="json")
 
     st.divider()
     st.subheader("Test on Sample Document")
@@ -1715,9 +2155,80 @@ elif page == "💬 Prompt Manager":
         )
         sample_doc = sample_docs[selected_index]
         screening_input = build_screening_input(sample_doc)
-        llm_request = build_llm_screening_request(screening_input)
-        llm_request_json = serialize_llm_screening_request(llm_request)
-        llm_user_message = build_screening_user_message(llm_request)
+        sample_context = select_context_for_document(
+            title=screening_input.title,
+            keyword_tags=screening_input.keyword_tags,
+            excerpt_text=screening_input.excerpt_text,
+        )
+        prompt_preview = {
+            "factual_system_intro": factual_system_intro,
+            "factual_task_instructions": factual_task_instructions,
+            "factual_output_contract": factual_output_contract,
+            "exploratory_system_intro": exploratory_system_intro,
+            "exploratory_task_instructions": exploratory_task_instructions,
+            "exploratory_output_contract": exploratory_output_contract,
+        }
+        factual_request = build_llm_screening_request(screening_input)
+        factual_request_json = serialize_llm_screening_request(factual_request)
+        factual_user_message = build_screening_user_message(factual_request)
+        factual_system_prompt_preview = compile_factual_system_prompt(
+            prompt_preview,
+            selected_lenses=sample_context.selected_lenses,
+            selected_footholds=sample_context.selected_footholds,
+            core_context_text=core_context_text,
+        )
+
+        preview_factual_output = FactualScreeningOutput(
+            factual_summary="Preview factual analyse voor request-shape inspectie.",
+            what_is_changing="Preview: het document verandert mogelijke keuzes, randvoorwaarden of uitvoeringslogica.",
+            actors_and_sectors="Preview: betrokken partijen en sectoren volgen uit de bronpreview.",
+            actor_groups=[
+                FactualActorGroup(
+                    label="Gemeenten en provincies",
+                    role="Maken ruimtelijke keuzes en bepalen hoe klimaatrisico's landen in uitvoering.",
+                ),
+                FactualActorGroup(
+                    label="RVO en uitvoeringspartners",
+                    role="Kunnen instrumenten, ondersteuning of kennis vertalen naar bestaande werkprocessen.",
+                ),
+            ],
+            opgave_relevance="Preview: relevantie voor de Opgave Klimaatadaptatie wordt hier samengevat.",
+            relevance_reasons=[
+                FactualRelevanceReason(
+                    title="Beslissingen van nu",
+                    explanation="De bron raakt keuzes die nu worden gemaakt in uitvoering of investeringen.",
+                ),
+                FactualRelevanceReason(
+                    title="Aanknopingspunt voor RVO",
+                    explanation="Er is een plausibele landing in bestaande instrumenten, netwerken of ondersteuning.",
+                ),
+            ],
+            footholds=[
+                FactualFoothold(
+                    id=item.id,
+                    rationale=f"Preview rationale voor {item.title}.",
+                )
+                for item in sample_context.selected_footholds[:2]
+            ] or [FactualFoothold(id="preview_foothold", rationale="Preview rationale.")],
+            evidence_quotes=[
+                "Preview quote 1 uit het excerpt.",
+                "Preview quote 2 uit het excerpt.",
+            ],
+            uncertainties=["Preview onzekerheid."],
+            opgave_signal_score=6,
+            rvo_link_path="mixed",
+            score_defense="Preview: strategische betekenis en een plausibele RVO-landing dragen samen deze score.",
+            confidence=0.65,
+        )
+        exploratory_request = build_exploratory_llm_screening_request(screening_input, preview_factual_output)
+        exploratory_request_json = serialize_exploratory_llm_screening_request(exploratory_request)
+        exploratory_user_message = build_exploratory_screening_user_message(exploratory_request)
+        exploratory_system_prompt_preview = compile_exploratory_system_prompt(
+            prompt_preview,
+            selected_lenses=sample_context.exploratory_lenses,
+            selected_footholds=sample_context.exploratory_footholds,
+            core_context_text=core_context_text,
+        )
 
         meta_a, meta_b, meta_c, meta_d = st.columns(4)
         with meta_a:
@@ -1729,6 +2240,21 @@ elif page == "💬 Prompt Manager":
         with meta_d:
             st.metric("Woorden", count_words(screening_input.excerpt_text))
 
+        context_cols = st.columns(2)
+        with context_cols[0]:
+            st.markdown("**Factual geselecteerde lenzen**")
+            render_tag_pills(context_titles(sample_context.selected_lenses))
+            st.markdown("**Factual geselecteerde footholds**")
+            render_tag_pills(context_titles(sample_context.selected_footholds), muted=True)
+        with context_cols[1]:
+            st.markdown("**Exploratory subset**")
+            if sample_context.exploratory_lenses:
+                st.caption("Lenzen")
+                render_tag_pills(context_titles(sample_context.exploratory_lenses))
+            if sample_context.exploratory_footholds:
+                st.caption("Footholds")
+                render_tag_pills(context_titles(sample_context.exploratory_footholds), muted=True)
+
         with st.expander("Excerpt Preview", expanded=True):
             st.text_area(
                 "Excerpt dat door de builder is geselecteerd",
@@ -1737,19 +2263,51 @@ elif page == "💬 Prompt Manager":
                 disabled=True,
             )
 
-        with st.expander("LLM Input JSON", expanded=False):
+        with st.expander("Factual Compiled System Prompt", expanded=False):
             st.text_area(
-                "Reduced request object",
-                llm_request_json,
+                "Samengevoegde factual system prompt",
+                factual_system_prompt_preview,
+                height=320,
+                disabled=True,
+            )
+
+        with st.expander("Factual Request JSON", expanded=False):
+            st.text_area(
+                "Reduced factual request object",
+                factual_request_json,
                 height=220,
                 disabled=True,
             )
 
-        with st.expander("Final User Message", expanded=False):
+        with st.expander("Factual User Message", expanded=False):
             st.text_area(
-                "User message zoals die naar de LLM zou gaan",
-                llm_user_message,
+                "User message zoals die naar de factual LLM-call zou gaan",
+                factual_user_message,
                 height=260,
+                disabled=True,
+            )
+
+        with st.expander("Exploratory Compiled System Prompt", expanded=False):
+            st.text_area(
+                "Samengevoegde exploratory system prompt",
+                exploratory_system_prompt_preview,
+                height=320,
+                disabled=True,
+            )
+
+        with st.expander("Exploratory Request JSON", expanded=False):
+            st.text_area(
+                "Reduced exploratory request object",
+                exploratory_request_json,
+                height=260,
+                disabled=True,
+            )
+
+        with st.expander("Exploratory User Message", expanded=False):
+            st.text_area(
+                "User message zoals die naar de exploratory LLM-call zou gaan",
+                exploratory_user_message,
+                height=320,
                 disabled=True,
             )
 
